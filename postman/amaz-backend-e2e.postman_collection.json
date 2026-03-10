@@ -1,0 +1,272 @@
+{
+  "info": {
+    "name": "Amaz Backend E2E",
+    "_postman_id": "7fd2b95f-18de-4cb0-a978-0fa59ce8c4a3",
+    "description": "Collection de validation des flux critiques backend (auth, OTP, orders, messaging).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Gateway",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{gatewayUrl}}/health",
+          "host": [
+            "{{gatewayUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Auth - Register",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Client-Fingerprint",
+            "value": "{{clientFingerprint}}"
+          },
+          {
+            "key": "X-PoW-Timestamp",
+            "value": "{{powTimestamp}}"
+          },
+          {
+            "key": "X-PoW-Nonce",
+            "value": "{{powNonce}}"
+          },
+          {
+            "key": "X-PoW-Proof",
+            "value": "{{powProof}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\",\n  \"username\": \"{{userName}}\"\n}"
+        },
+        "url": {
+          "raw": "{{gatewayUrl}}/api/v1/auth/register",
+          "host": [
+            "{{gatewayUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "register"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Auth - Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Client-Fingerprint",
+            "value": "{{clientFingerprint}}"
+          },
+          {
+            "key": "X-PoW-Timestamp",
+            "value": "{{powTimestamp}}"
+          },
+          {
+            "key": "X-PoW-Nonce",
+            "value": "{{powNonce}}"
+          },
+          {
+            "key": "X-PoW-Proof",
+            "value": "{{powProof}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+        },
+        "url": {
+          "raw": "{{gatewayUrl}}/api/v1/auth/login",
+          "host": [
+            "{{gatewayUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "login"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Auth - OTP Forgot Start",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "X-Client-Fingerprint",
+            "value": "{{clientFingerprint}}"
+          },
+          {
+            "key": "X-PoW-Timestamp",
+            "value": "{{powTimestamp}}"
+          },
+          {
+            "key": "X-PoW-Nonce",
+            "value": "{{powNonce}}"
+          },
+          {
+            "key": "X-PoW-Proof",
+            "value": "{{powProof}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"channel\": \"email\"\n}"
+        },
+        "url": {
+          "raw": "{{gatewayUrl}}/api/v1/auth/password/forgot/start",
+          "host": [
+            "{{gatewayUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "password",
+            "forgot",
+            "start"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Orders - Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "X-Client-Fingerprint",
+            "value": "{{clientFingerprint}}"
+          },
+          {
+            "key": "X-PoW-Timestamp",
+            "value": "{{powTimestamp}}"
+          },
+          {
+            "key": "X-PoW-Nonce",
+            "value": "{{powNonce}}"
+          },
+          {
+            "key": "X-PoW-Proof",
+            "value": "{{powProof}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"articles\": [\n    { \"produitId\": \"{{productId}}\", \"quantite\": 1 }\n  ],\n  \"adresseLivraison\": { \"ville\": \"Paris\", \"ligne1\": \"12 Rue Exemple\" },\n  \"methodePaiement\": \"card\"\n}"
+        },
+        "url": {
+          "raw": "{{gatewayUrl}}/api/v1/commandes",
+          "host": [
+            "{{gatewayUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "commandes"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Messaging - Send user->vendor",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "X-Client-Fingerprint",
+            "value": "{{clientFingerprint}}"
+          },
+          {
+            "key": "X-PoW-Timestamp",
+            "value": "{{powTimestamp}}"
+          },
+          {
+            "key": "X-PoW-Nonce",
+            "value": "{{powNonce}}"
+          },
+          {
+            "key": "X-PoW-Proof",
+            "value": "{{powProof}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"vendorId\": \"{{vendorId}}\",\n  \"content\": \"Bonjour, disponibilité produit ?\",\n  \"subject\": \"Question produit\",\n  \"userName\": \"{{userName}}\",\n  \"vendorName\": \"{{vendorName}}\"\n}"
+        },
+        "url": {
+          "raw": "{{gatewayUrl}}/api/v1/messages",
+          "host": [
+            "{{gatewayUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "messages"
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "gatewayUrl", "value": "http://localhost:3000" },
+    { "key": "clientFingerprint", "value": "demo-fingerprint" },
+    { "key": "powTimestamp", "value": "0" },
+    { "key": "powNonce", "value": "0" },
+    { "key": "powProof", "value": "0" },
+    { "key": "userEmail", "value": "client@amaz.local" },
+    { "key": "userPassword", "value": "P@ssw0rd12345" },
+    { "key": "userName", "value": "Client Demo" },
+    { "key": "vendorName", "value": "Vendor Demo" },
+    { "key": "productId", "value": "prd_demo_1" },
+    { "key": "vendorId", "value": "vendor_demo_01" },
+    { "key": "accessToken", "value": "" }
+  ]
+}
