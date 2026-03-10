@@ -1,0 +1,643 @@
+const express = require('express');
+
+const { requestIdMiddleware } = require('../../../shared/middleware/request-id');
+const { createInternalAuthMiddleware } = require('../../../shared/middleware/internal-auth');
+const { errorHandler, notFoundHandler } = require('../../../shared/middleware/error-handler');
+const { getPostgresPool } = require('../../../shared/db/postgres');
+const { randomId } = require('../../../shared/utils/ids');
+const { internalFetch } = require('../../../shared/utils/internal-http');
+const { config } = require('./config');
+
+const ORDER_STATUSES = ['confirmed', 'preparing', 'shipped', 'delivered', 'cancelled'];
+const CANCELLABLE_STATUSES = new Set(['confirmed', 'preparing']);
+
+function estimateDeliveryIso() {
+  const days = 3 + Math.floor(Math.random() * 5);
+  const date = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  return date.toISOString();
+}
+
+function parseOrderItems(payload = {}) {
+  const fromArray = Array.isArray(payload.items) ? payload.items : payload.articles;
+  const sourceItems =
+    Array.isArray(fromArray) && fromArray.length > 0
+      ? fromArray
+      : payload.produitId || payload.productId
+        ? [payload]
+        : [];
+
+  return sourceItems
+    .map((item) => ({
+      productId: String(item.produitId || item.productId || '').trim(),
+      quantity: Math.max(1, Number(item.quantite || item.quantity || 1))
+    }))
+    .filter((item) => item.productId);
+}
+
+function mapOrderRow(row) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    status: row.status,
+    total: Number(row.total_amount),
+    estimatedDeliveryAt: row.estimated_delivery_at,
+    deliveredAt: row.delivered_at,
+    shippingAddress: row.shipping_address,
+    paymentStatus: row.payment_status,
+    items: row.items,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+async function fetchProduct(productId, requestId) {
+  const response = await internalFetch({
+    baseUrl: config.productServiceUrl,
+    path: `/produits/${encodeURIComponent(productId)}`,
+    method: 'GET',
+    callerService: 'order-service',
+    secret: config.internalSharedSecret,
+    requestId,
+    timeoutMs: config.internalFetchTimeoutMs
+  });
+
+  if (!response.ok || !response.payload?.data) {
+    throw {
+      status: 400,
+      code: 'PRODUCT_NOT_FOUND',
+      publicMessage: `Produit introuvable: ${productId}`
+    };
+  }
+  return response.payload.data;
+}
+
+async function reserveProductStock({ productId, quantity, requestId }) {
+  const response = await internalFetch({
+    baseUrl: config.productServiceUrl,
+    path: `/internal/produits/${encodeURIComponent(productId)}/reserve`,
+    method: 'POST',
+    body: { quantity },
+    callerService: 'order-service',
+    secret: config.internalSharedSecret,
+    requestId,
+    timeoutMs: config.internalFetchTimeoutMs
+  });
+
+  if (!response.ok) {
+    throw {
+      status: response.status || 409,
+      code: response.payload?.error?.code || 'STOCK_RESERVE_FAILED',
+      publicMessage: response.payload?.error?.message || `Impossible de réserver le stock du produit ${productId}`
+    };
+  }
+}
+
+async function releaseProductStock({ productId, quantity, requestId }) {
+  await internalFetch({
+    baseUrl: config.productServiceUrl,
+    path: `/internal/produits/${encodeURIComponent(productId)}/release`,
+    method: 'POST',
+    body: { quantity },
+    callerService: 'order-service',
+    secret: config.internalSharedSecret,
+    requestId,
+    timeoutMs: config.internalFetchTimeoutMs
+  });
+}
+
+function createApp() {
+  const app = express();
+  app.disable('x-powered-by');
+  app.use(express.json({ limit: '2mb' }));
+  app.use(requestIdMiddleware);
+
+  app.get('/health', (req, res) => {
+    res.json({
+      success: true,
+      data: { service: 'order-service', status: 'ok' },
+      requestId: req.requestId
+    });
+  });
+
+  app.use(
+    createInternalAuthMiddleware({
+      secret: config.internalSharedSecret,
+      allowedServices: ['gateway']
+    })
+  );
+
+  app.post('/commandes', async (req, res, next) => {
+    const userId = String(req.headers['x-auth-user-id'] || '').trim();
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'AUTH_REQUIRED',
+          message: 'Authentification requise'
+        },
+        requestId: req.requestId
+      });
+    }
+
+    const rawItems = parseOrderItems(req.body || {});
+    if (rawItems.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'articles/items requis'
+        },
+        requestId: req.requestId
+      });
+    }
+
+    const reservedItems = [];
+    try {
+      const enrichedItems = [];
+      for (const rawItem of rawItems) {
+        const product = await fetchProduct(rawItem.productId, req.requestId);
+        if (String(product.status || 'published') === 'archived') {
+          throw {
+            status: 409,
+            code: 'PRODUCT_ARCHIVED',
+            publicMessage: `Produit indisponible: ${rawItem.productId}`
+          };
+        }
+
+        await reserveProductStock({
+          productId: rawItem.productId,
+          quantity: rawItem.quantity,
+          requestId: req.requestId
+        });
+        reservedItems.push({
+          productId: rawItem.productId,
+          quantity: rawItem.quantity
+        });
+
+        enrichedItems.push({
+          productId: rawItem.productId,
+          title: String(product.title || 'Produit'),
+          price: Number(product.price || 0),
+          quantity: rawItem.quantity,
+          vendorId: String(product.vendorId || ''),
+          image: String(product.image || '')
+        });
+      }
+
+      const orderId = randomId('ord');
+      const estimatedDeliveryAt = estimateDeliveryIso();
+      const total = enrichedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      const shippingAddress = req.body?.adresseLivraison || req.body?.shippingAddress || {};
+
+      const pool = getPostgresPool();
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          `
+            INSERT INTO orders (
+              id,
+              user_id,
+              status,
+              total_amount,
+              currency,
+              estimated_delivery_at,
+              shipping_address,
+              payment_status
+            )
+            VALUES ($1, $2, 'confirmed', $3, 'EUR', $4, $5::jsonb, 'authorized')
+          `,
+          [orderId, userId, total, estimatedDeliveryAt, JSON.stringify(shippingAddress)]
+        );
+
+        for (const item of enrichedItems) {
+          await client.query(
+            `
+              INSERT INTO order_items (
+                id,
+                order_id,
+                product_id,
+                product_title,
+                unit_price,
+                quantity,
+                vendor_id,
+                image_url
+              )
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `,
+            [
+              randomId('orditm'),
+              orderId,
+              item.productId,
+              item.title,
+              item.price,
+              item.quantity,
+              item.vendorId,
+              item.image
+            ]
+          );
+        }
+
+        await client.query(
+          `
+            INSERT INTO payment_attempts (id, order_id, provider, amount, currency, status, provider_ref)
+            VALUES ($1, $2, 'mock', $3, 'EUR', 'authorized', $4)
+          `,
+          [randomId('pay'), orderId, total, randomId('provider')]
+        );
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      return res.status(201).json({
+        success: true,
+        data: {
+          id: orderId,
+          userId,
+          status: 'confirmed',
+          estimatedDeliveryAt,
+          total,
+          items: enrichedItems
+        },
+        requestId: req.requestId
+      });
+    } catch (error) {
+      await Promise.all(
+        reservedItems.map((item) =>
+          releaseProductStock({
+            productId: item.productId,
+            quantity: item.quantity,
+            requestId: req.requestId
+          }).catch(() => undefined)
+        )
+      );
+      return next(error);
+    }
+  });
+
+  app.get('/commandes', async (req, res, next) => {
+    try {
+      const authUserId = String(req.headers['x-auth-user-id'] || '').trim();
+      const role = String(req.headers['x-auth-role'] || '').trim();
+      if (role !== 'admin' && !authUserId) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'AUTH_REQUIRED', message: 'Authentification requise' },
+          requestId: req.requestId
+        });
+      }
+      const statusFilter = String(req.query.status || '').trim();
+      const page = Math.max(Number(req.query.page || 1), 1);
+      const limit = Math.min(Math.max(Number(req.query.limit || 20), 1), 100);
+      const offset = (page - 1) * limit;
+
+      const values = [];
+      const conditions = [];
+
+      if (statusFilter && ORDER_STATUSES.includes(statusFilter)) {
+        values.push(statusFilter);
+        conditions.push(`o.status = $${values.length}`);
+      }
+
+      if (role === 'vendor') {
+        values.push(authUserId);
+        conditions.push(`EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.vendor_id = $${values.length})`);
+      } else if (role !== 'admin') {
+        values.push(authUserId);
+        conditions.push(`o.user_id = $${values.length}`);
+      }
+
+      const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+      const pool = getPostgresPool();
+
+      values.push(limit);
+      values.push(offset);
+      const listResult = await pool.query(
+        `
+          SELECT
+            o.*,
+            COALESCE(
+              json_agg(
+                json_build_object(
+                  'id', i.id,
+                  'productId', i.product_id,
+                  'title', i.product_title,
+                  'price', i.unit_price,
+                  'quantity', i.quantity,
+                  'vendorId', i.vendor_id,
+                  'image', i.image_url
+                )
+              ) FILTER (WHERE i.id IS NOT NULL),
+              '[]'::json
+            ) AS items
+          FROM orders o
+          LEFT JOIN order_items i ON i.order_id = o.id
+          ${whereClause}
+          GROUP BY o.id
+          ORDER BY o.created_at DESC
+          LIMIT $${values.length - 1}
+          OFFSET $${values.length}
+        `,
+        values
+      );
+
+      const countValues = values.slice(0, values.length - 2);
+      const countResult = await pool.query(
+        `
+          SELECT COUNT(*)::int AS count
+          FROM orders o
+          ${whereClause}
+        `,
+        countValues
+      );
+      const total = Number(countResult.rows[0]?.count || 0);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          items: listResult.rows.map(mapOrderRow),
+          pagination: {
+            page,
+            limit,
+            total
+          }
+        },
+        requestId: req.requestId
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.get('/commandes/:orderId', async (req, res, next) => {
+    try {
+      const orderId = String(req.params.orderId || '').trim();
+      const authUserId = String(req.headers['x-auth-user-id'] || '').trim();
+      const role = String(req.headers['x-auth-role'] || '').trim();
+      if (role !== 'admin' && !authUserId) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'AUTH_REQUIRED', message: 'Authentification requise' },
+          requestId: req.requestId
+        });
+      }
+      const pool = getPostgresPool();
+
+      const result = await pool.query(
+        `
+          SELECT
+            o.*,
+            COALESCE(
+              json_agg(
+                json_build_object(
+                  'id', i.id,
+                  'productId', i.product_id,
+                  'title', i.product_title,
+                  'price', i.unit_price,
+                  'quantity', i.quantity,
+                  'vendorId', i.vendor_id,
+                  'image', i.image_url
+                )
+              ) FILTER (WHERE i.id IS NOT NULL),
+              '[]'::json
+            ) AS items
+          FROM orders o
+          LEFT JOIN order_items i ON i.order_id = o.id
+          WHERE o.id = $1
+          GROUP BY o.id
+          LIMIT 1
+        `,
+        [orderId]
+      );
+      const order = result.rows[0];
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'ORDER_NOT_FOUND', message: 'Commande introuvable' },
+          requestId: req.requestId
+        });
+      }
+
+      if (role === 'vendor') {
+        const vendorOwns = Array.isArray(order.items) && order.items.some((item) => item.vendorId === authUserId);
+        if (!vendorOwns) {
+          return res.status(403).json({
+            success: false,
+            error: { code: 'FORBIDDEN', message: 'Commande non autorisée pour ce vendeur' },
+            requestId: req.requestId
+          });
+        }
+      } else if (role !== 'admin' && order.user_id !== authUserId) {
+        return res.status(403).json({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Commande non autorisée' },
+          requestId: req.requestId
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: mapOrderRow(order),
+        requestId: req.requestId
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.put('/commandes/:orderId/annuler', async (req, res, next) => {
+    try {
+      const orderId = String(req.params.orderId || '').trim();
+      const authUserId = String(req.headers['x-auth-user-id'] || '').trim();
+      const role = String(req.headers['x-auth-role'] || '').trim();
+      if (role !== 'admin' && !authUserId) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'AUTH_REQUIRED', message: 'Authentification requise' },
+          requestId: req.requestId
+        });
+      }
+      const pool = getPostgresPool();
+
+      const details = await pool.query(
+        `
+          SELECT
+            o.id,
+            o.user_id,
+            o.status,
+            COALESCE(
+              json_agg(
+                json_build_object(
+                  'productId', i.product_id,
+                  'quantity', i.quantity
+                )
+              ) FILTER (WHERE i.id IS NOT NULL),
+              '[]'::json
+            ) AS items
+          FROM orders o
+          LEFT JOIN order_items i ON i.order_id = o.id
+          WHERE o.id = $1
+          GROUP BY o.id
+          LIMIT 1
+        `,
+        [orderId]
+      );
+      const order = details.rows[0];
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'ORDER_NOT_FOUND', message: 'Commande introuvable' },
+          requestId: req.requestId
+        });
+      }
+
+      if (role !== 'admin' && order.user_id !== authUserId) {
+        return res.status(403).json({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Annulation non autorisée' },
+          requestId: req.requestId
+        });
+      }
+
+      if (!CANCELLABLE_STATUSES.has(order.status)) {
+        return res.status(409).json({
+          success: false,
+          error: { code: 'ORDER_CANNOT_BE_CANCELLED', message: 'La commande ne peut plus être annulée' },
+          requestId: req.requestId
+        });
+      }
+
+      await pool.query(
+        `
+          UPDATE orders
+          SET status = 'cancelled',
+              updated_at = NOW()
+          WHERE id = $1
+        `,
+        [orderId]
+      );
+
+      const releaseItems = (Array.isArray(order.items) ? order.items : []).filter(
+        (item) => String(item.productId || '').trim() && Number(item.quantity || 0) > 0
+      );
+      await Promise.all(
+        releaseItems.map((item) =>
+          releaseProductStock({
+            productId: String(item.productId || ''),
+            quantity: Number(item.quantity || 0),
+            requestId: req.requestId
+          }).catch(() => undefined)
+        )
+      );
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          id: orderId,
+          status: 'cancelled'
+        },
+        requestId: req.requestId
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.put('/commandes/:orderId/statut', async (req, res, next) => {
+    try {
+      const orderId = String(req.params.orderId || '').trim();
+      const nextStatus = String(req.body?.status || '').trim();
+      const role = String(req.headers['x-auth-role'] || '').trim();
+      const authUserId = String(req.headers['x-auth-user-id'] || '').trim();
+
+      if (!ORDER_STATUSES.includes(nextStatus)) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_STATUS',
+            message: 'Statut invalide'
+          },
+          requestId: req.requestId
+        });
+      }
+
+      if (!['admin', 'vendor'].includes(role)) {
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Mise à jour statut réservée aux vendeurs/admin'
+          },
+          requestId: req.requestId
+        });
+      }
+
+      const pool = getPostgresPool();
+      if (role === 'vendor') {
+        const ownerCheck = await pool.query(
+          `
+            SELECT 1
+            FROM order_items
+            WHERE order_id = $1
+              AND vendor_id = $2
+            LIMIT 1
+          `,
+          [orderId, authUserId]
+        );
+        if (!ownerCheck.rowCount) {
+          return res.status(403).json({
+            success: false,
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Commande non autorisée pour ce vendeur'
+            },
+            requestId: req.requestId
+          });
+        }
+      }
+
+      const updated = await pool.query(
+        `
+          UPDATE orders
+          SET status = $2,
+              delivered_at = CASE WHEN $2 = 'delivered' THEN NOW() ELSE delivered_at END,
+              updated_at = NOW()
+          WHERE id = $1
+          RETURNING id, status
+        `,
+        [orderId, nextStatus]
+      );
+
+      if (!updated.rowCount) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'ORDER_NOT_FOUND', message: 'Commande introuvable' },
+          requestId: req.requestId
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          id: orderId,
+          status: nextStatus
+        },
+        requestId: req.requestId
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.use(notFoundHandler);
+  app.use(errorHandler);
+  return app;
+}
+
+module.exports = {
+  createApp
+};

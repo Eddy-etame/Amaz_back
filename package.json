@@ -1,0 +1,31 @@
+{
+  "name": "amaz_backend",
+  "version": "1.0.0",
+  "description": "Amaz backend microservices",
+  "private": true,
+  "main": "index.js",
+  "workspaces": [
+    "gateway",
+    "services/*"
+  ],
+  "scripts": {
+    "start:gateway": "npm --workspace gateway run start",
+    "start:user": "npm --workspace user-service run start",
+    "start:product": "npm --workspace product-service run start",
+    "start:order": "npm --workspace order-service run start",
+    "start:messaging": "npm --workspace messaging-service run start",
+    "start:ai": "npm --workspace ai-service run start",
+    "start:pepper": "npm --workspace pepper-service run start",
+    "db:mongo:init": "node ./db/mongo/init.js",
+    "test": "node ./scripts/run-smoke-tests.js",
+    "qa:campaign": "node ./scripts/run-qa-campaign.js"
+  },
+  "keywords": [
+    "microservices",
+    "express",
+    "security"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
