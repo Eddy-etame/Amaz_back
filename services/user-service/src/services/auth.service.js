@@ -7,6 +7,7 @@ const {
   findUserByPhone,
   findUserById,
   createUser,
+  createVendor,
   updatePassword,
   markVerification,
   insertSecurityEvent
@@ -156,21 +157,54 @@ async function register({ payload, fingerprintHash, ctx }) {
     };
   }
 
+  const role = String(payload.role || 'user').toLowerCase();
+  if (role === 'vendor') {
+    const vendorValidation = requireFields(payload, ['businessName']);
+    if (!vendorValidation.ok) {
+      return {
+        status: 400,
+        body: {
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: `Champs manquants pour vendeur: ${vendorValidation.missing.join(', ')}`
+          }
+        }
+      };
+    }
+  }
+
   const { passwordHash, passwordSalt } = await buildPasswordHash({
     password: payload.password,
     requestId: ctx.requestId
   });
 
   const userId = randomId('usr');
-  await createUser({
-    userId,
-    email: payload.email,
-    phone: payload.phone || null,
-    username: payload.username || null,
-    role: 'user',
-    passwordHash,
-    passwordSalt
-  });
+  if (role === 'vendor') {
+    await createVendor({
+      userId,
+      email: payload.email,
+      phone: payload.phone || null,
+      username: payload.username || null,
+      passwordHash,
+      passwordSalt,
+      businessName: payload.businessName || null,
+      siret: payload.siret || null,
+      address: payload.address || null,
+      taxId: payload.taxId || null,
+      iban: payload.iban || null
+    });
+  } else {
+    await createUser({
+      userId,
+      email: payload.email,
+      phone: payload.phone || null,
+      username: payload.username || null,
+      role: role || 'user',
+      passwordHash,
+      passwordSalt
+    });
+  }
 
   const created = await findUserById(userId);
   const session = await createSessionForUser({

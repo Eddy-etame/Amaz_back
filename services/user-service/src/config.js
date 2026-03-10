@@ -27,7 +27,8 @@ const config = {
   otpCooldownSeconds: parseNumber(process.env.OTP_COOLDOWN_SECONDS, 60),
   otpMaxRequestsPerHour: parseNumber(process.env.OTP_MAX_REQUESTS_PER_HOUR, 8),
   passwordResetTtlMinutes: parseNumber(process.env.PASSWORD_RESET_TTL_MINUTES, 15),
-  pepperServiceUrl: process.env.PEPPER_SERVICE_URL || 'http://localhost:3006'
+  pepperServiceUrl: process.env.PEPPER_SERVICE_URL || 'http://localhost:3006',
+  pepperPrimaryUrl: process.env.PEPPER_PRIMARY_URL || 'http://localhost:3007'
 };
 
 module.exports = {

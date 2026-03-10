@@ -8,6 +8,7 @@ const { config } = require('./config');
 const { createAuthMiddleware } = require('./middlewares/auth');
 const { createGatewayValidationMiddleware } = require('./middlewares/input-validation');
 const { forwardToService } = require('./proxy');
+const { startHealthMonitor, isServiceHealthy, getAllStatus } = require('./health-monitor');
 
 const AUTH_PUBLIC_PATHS = new Set([
   '/login',
@@ -63,7 +64,31 @@ function mapAlias(pathWithQuery, fromPath, toPath) {
   return withQuery(mapped, query);
 }
 
-async function forwardProxy({ req, res, serviceBaseUrl, targetPath, internalSecret }) {
+const SERVICE_NAME_BY_URL = {};
+function buildServiceNameMap() {
+  const s = config.services;
+  if (s.user) SERVICE_NAME_BY_URL[s.user.replace(/\/+$/, '')] = 'user';
+  if (s.product) SERVICE_NAME_BY_URL[s.product.replace(/\/+$/, '')] = 'product';
+  if (s.order) SERVICE_NAME_BY_URL[s.order.replace(/\/+$/, '')] = 'order';
+  if (s.messaging) SERVICE_NAME_BY_URL[s.messaging.replace(/\/+$/, '')] = 'messaging';
+  if (s.ai) SERVICE_NAME_BY_URL[s.ai.replace(/\/+$/, '')] = 'ai';
+  if (s.pepper) SERVICE_NAME_BY_URL[s.pepper.replace(/\/+$/, '')] = 'pepper';
+  if (s.pepperPrimary) SERVICE_NAME_BY_URL[s.pepperPrimary.replace(/\/+$/, '')] = 'pepperPrimary';
+}
+
+async function forwardProxy({ req, res, serviceBaseUrl, targetPath, internalSecret, serviceName }) {
+  const base = String(serviceBaseUrl || '').replace(/\/+$/, '');
+  const name = serviceName || SERVICE_NAME_BY_URL[base];
+  if (name && !isServiceHealthy(name)) {
+    return res.status(503).json({
+      success: false,
+      error: {
+        code: 'SERVICE_UNAVAILABLE',
+        message: `Le service ${name} est temporairement indisponible. Veuillez réessayer plus tard.`
+      },
+      requestId: req.requestId
+    });
+  }
   await forwardToService({
     req,
     res,
@@ -99,6 +124,7 @@ function corsMiddleware(req, res, next) {
 }
 
 function createApp() {
+  buildServiceNameMap();
   const app = express();
   const inputValidationMiddleware = createGatewayValidationMiddleware();
   const authMiddleware = createAuthMiddleware({
@@ -123,43 +149,27 @@ function createApp() {
     });
   });
 
-  const HEALTH_AGGREGATE_TIMEOUT_MS = 2500;
-  const SERVICE_NAMES = ['user', 'product', 'order', 'messaging', 'ai', 'pepper'];
-
-  app.get('/health/aggregate', async (req, res) => {
-    const requestId = req.requestId || 'aggregate';
-    const data = {
-      gateway: { status: 'ok', code: 200 },
-      services: {}
-    };
-
-    const checkOne = async (name) => {
-      const baseUrl = config.services[name];
-      if (!baseUrl) {
-        data.services[name] = { status: 'fail', code: 0, error: 'unreachable' };
-        return;
-      }
-      const url = `${baseUrl.replace(/\/+$/, '')}/health`;
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), HEALTH_AGGREGATE_TIMEOUT_MS);
-      try {
-        const r = await fetch(url, { signal: controller.signal });
-        clearTimeout(timer);
-        const ok = r.ok && r.status === 200;
-        data.services[name] = { status: ok ? 'ok' : 'fail', code: r.status };
-      } catch (err) {
-        clearTimeout(timer);
-        const errorMsg = process.env.NODE_ENV === 'production' ? 'unreachable' : (err.code || err.name || 'unreachable');
-        data.services[name] = { status: 'fail', code: 0, error: errorMsg };
-      }
-    };
-
-    await Promise.all(SERVICE_NAMES.map((name) => checkOne(name)));
-
+  app.get('/health/aggregate', (req, res) => {
+    const raw = getAllStatus();
+    const services = {};
+    for (const name of Object.keys(config.services)) {
+      const s = raw[name];
+      services[name] = s
+        ? {
+            status: s.ok ? 'ok' : 'fail',
+            code: s.code || 0,
+            ...(s.error && { error: s.error }),
+            lastCheck: s.lastCheck
+          }
+        : { status: 'pending', code: 0, error: 'not yet checked' };
+    }
     res.json({
       success: true,
-      data,
-      requestId
+      data: {
+        gateway: { status: 'ok', code: 200 },
+        services
+      },
+      requestId: req.requestId
     });
   });
 
@@ -189,7 +199,8 @@ function createApp() {
         res,
         serviceBaseUrl: config.services.user,
         targetPath: normalizeAuthDownstreamPath(req.originalUrl),
-        internalSecret: config.internalSharedSecret
+        internalSecret: config.internalSharedSecret,
+        serviceName: 'user'
       });
 
     try {
@@ -212,7 +223,8 @@ function createApp() {
             res,
             serviceBaseUrl: config.services.product,
             targetPath: normalizeDownstreamPath(req.originalUrl),
-            internalSecret: config.internalSharedSecret
+            internalSecret: config.internalSharedSecret,
+            serviceName: 'product'
           });
         });
         return;
@@ -223,7 +235,8 @@ function createApp() {
         res,
         serviceBaseUrl: config.services.product,
         targetPath: normalizeDownstreamPath(req.originalUrl),
-        internalSecret: config.internalSharedSecret
+        internalSecret: config.internalSharedSecret,
+        serviceName: 'product'
       });
     } catch (error) {
       next(error);
@@ -240,7 +253,8 @@ function createApp() {
             res,
             serviceBaseUrl: config.services.product,
             targetPath,
-            internalSecret: config.internalSharedSecret
+            internalSecret: config.internalSharedSecret,
+            serviceName: 'product'
           });
         });
         return;
@@ -251,7 +265,8 @@ function createApp() {
         res,
         serviceBaseUrl: config.services.product,
         targetPath,
-        internalSecret: config.internalSharedSecret
+        internalSecret: config.internalSharedSecret,
+        serviceName: 'product'
       });
     } catch (error) {
       next(error);
@@ -266,7 +281,8 @@ function createApp() {
           res,
           serviceBaseUrl: config.services.order,
           targetPath: normalizeDownstreamPath(req.originalUrl),
-          internalSecret: config.internalSharedSecret
+          internalSecret: config.internalSharedSecret,
+          serviceName: 'order'
         });
       });
     } catch (error) {
@@ -283,7 +299,8 @@ function createApp() {
           res,
           serviceBaseUrl: config.services.order,
           targetPath,
-          internalSecret: config.internalSharedSecret
+          internalSecret: config.internalSharedSecret,
+          serviceName: 'order'
         });
       });
     } catch (error) {
@@ -299,7 +316,8 @@ function createApp() {
           res,
           serviceBaseUrl: config.services.messaging,
           targetPath: normalizeDownstreamPath(req.originalUrl),
-          internalSecret: config.internalSharedSecret
+          internalSecret: config.internalSharedSecret,
+          serviceName: 'messaging'
         });
       });
     } catch (error) {
@@ -315,7 +333,8 @@ function createApp() {
           res,
           serviceBaseUrl: config.services.ai,
           targetPath: normalizeDownstreamPath(req.originalUrl),
-          internalSecret: config.internalSharedSecret
+          internalSecret: config.internalSharedSecret,
+          serviceName: 'ai'
         });
       });
     } catch (error) {
@@ -331,7 +350,8 @@ function createApp() {
           res,
           serviceBaseUrl: config.services.ai,
           targetPath: normalizeDownstreamPath(req.originalUrl),
-          internalSecret: config.internalSharedSecret
+          internalSecret: config.internalSharedSecret,
+          serviceName: 'ai'
         });
       });
     } catch (error) {
