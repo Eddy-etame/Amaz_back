@@ -6,8 +6,11 @@ require('dotenv').config({
 
 const { createApp } = require('./app');
 const { config } = require('./config');
+const { startHealthMonitor } = require('./health-monitor');
 
 const app = createApp();
+
+startHealthMonitor(config.services);
 
 app.listen(config.port, config.host, () => {
   // eslint-disable-next-line no-console

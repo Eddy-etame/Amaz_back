@@ -7,10 +7,19 @@ const {
   findUserByPhone,
   findUserById,
   createUser,
+  createVendor,
+  updateUserProfile,
   updatePassword,
   markVerification,
   insertSecurityEvent
 } = require('../repositories/user.repository');
+const {
+  listUserAddresses,
+  createUserAddress,
+  updateUserAddress,
+  setDefaultUserAddress,
+  deleteUserAddress
+} = require('../repositories/address.repository');
 const {
   createSession,
   getSessionById,
@@ -77,6 +86,17 @@ function resolveUserDestination(user, channel) {
     return user.phone || null;
   }
   return user.email || null;
+}
+
+function normalizeAddressPayload(payload = {}) {
+  return {
+    label: String(payload.label || 'Adresse').trim() || 'Adresse',
+    street: String(payload.street || '').trim(),
+    city: String(payload.city || '').trim(),
+    postalCode: String(payload.postalCode || payload.postal_code || '').trim(),
+    country: String(payload.country || '').trim(),
+    phone: String(payload.phone || '').trim()
+  };
 }
 
 async function createSessionForUser({ user, fingerprintHash, ctx }) {
@@ -156,21 +176,54 @@ async function register({ payload, fingerprintHash, ctx }) {
     };
   }
 
+  const role = String(payload.role || 'user').toLowerCase();
+  if (role === 'vendor') {
+    const vendorValidation = requireFields(payload, ['businessName']);
+    if (!vendorValidation.ok) {
+      return {
+        status: 400,
+        body: {
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: `Champs manquants pour vendeur: ${vendorValidation.missing.join(', ')}`
+          }
+        }
+      };
+    }
+  }
+
   const { passwordHash, passwordSalt } = await buildPasswordHash({
     password: payload.password,
     requestId: ctx.requestId
   });
 
   const userId = randomId('usr');
-  await createUser({
-    userId,
-    email: payload.email,
-    phone: payload.phone || null,
-    username: payload.username || null,
-    role: 'user',
-    passwordHash,
-    passwordSalt
-  });
+  if (role === 'vendor') {
+    await createVendor({
+      userId,
+      email: payload.email,
+      phone: payload.phone || null,
+      username: payload.username || null,
+      passwordHash,
+      passwordSalt,
+      businessName: payload.businessName || null,
+      siret: payload.siret || null,
+      address: payload.address || null,
+      taxId: payload.taxId || null,
+      iban: payload.iban || null
+    });
+  } else {
+    await createUser({
+      userId,
+      email: payload.email,
+      phone: payload.phone || null,
+      username: payload.username || null,
+      role: role || 'user',
+      passwordHash,
+      passwordSalt
+    });
+  }
 
   const created = await findUserById(userId);
   const session = await createSessionForUser({
@@ -310,6 +363,197 @@ async function me({ userId }) {
       success: true,
       data: {
         user: toPublicUser(user)
+      }
+    }
+  };
+}
+
+async function updateMe({ userId, payload }) {
+  const user = await findUserById(userId);
+  if (!user) {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        error: {
+          code: 'USER_NOT_FOUND',
+          message: 'Utilisateur introuvable'
+        }
+      }
+    };
+  }
+
+  const email = String(payload?.email ?? user.email ?? '').trim().toLowerCase();
+  const username = String(payload?.username ?? payload?.nom ?? user.username ?? '').trim();
+  const phone = String(payload?.phone ?? payload?.telephone ?? user.phone ?? '').trim();
+
+  if (!isEmail(email)) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        error: {
+          code: 'INVALID_EMAIL',
+          message: 'Adresse email invalide'
+        }
+      }
+    };
+  }
+
+  await updateUserProfile({
+    userId,
+    email,
+    phone: phone || null,
+    username: username || null
+  });
+
+  const updated = await findUserById(userId);
+  return {
+    status: 200,
+    body: {
+      success: true,
+      data: {
+        user: toPublicUser(updated)
+      }
+    }
+  };
+}
+
+async function getAddresses({ userId }) {
+  const addresses = await listUserAddresses(userId);
+  return {
+    status: 200,
+    body: {
+      success: true,
+      data: {
+        items: addresses
+      }
+    }
+  };
+}
+
+async function addAddress({ userId, payload }) {
+  const address = normalizeAddressPayload(payload);
+  const validation = requireFields(address, ['street', 'city', 'country']);
+  if (!validation.ok) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: `Champs manquants: ${validation.missing.join(', ')}`
+        }
+      }
+    };
+  }
+
+  const created = await createUserAddress({
+    addressId: randomId('addr'),
+    userId,
+    ...address,
+    isDefault: Boolean(payload?.isDefault)
+  });
+
+  return {
+    status: 201,
+    body: {
+      success: true,
+      data: created
+    }
+  };
+}
+
+async function editAddress({ userId, addressId, payload }) {
+  const address = normalizeAddressPayload(payload);
+  const validation = requireFields(address, ['street', 'city', 'country']);
+  if (!validation.ok) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: `Champs manquants: ${validation.missing.join(', ')}`
+        }
+      }
+    };
+  }
+
+  const updated = await updateUserAddress({
+    userId,
+    addressId,
+    ...address,
+    isDefault: Boolean(payload?.isDefault)
+  });
+
+  if (!updated) {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        error: {
+          code: 'ADDRESS_NOT_FOUND',
+          message: 'Adresse introuvable'
+        }
+      }
+    };
+  }
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      data: updated
+    }
+  };
+}
+
+async function setAddressAsDefault({ userId, addressId }) {
+  const updated = await setDefaultUserAddress({ userId, addressId });
+  if (!updated) {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        error: {
+          code: 'ADDRESS_NOT_FOUND',
+          message: 'Adresse introuvable'
+        }
+      }
+    };
+  }
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      data: updated
+    }
+  };
+}
+
+async function removeAddress({ userId, addressId }) {
+  const deleted = await deleteUserAddress({ userId, addressId });
+  if (!deleted) {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        error: {
+          code: 'ADDRESS_NOT_FOUND',
+          message: 'Adresse introuvable'
+        }
+      }
+    };
+  }
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      data: {
+        deleted: true
       }
     }
   };
@@ -1131,6 +1375,12 @@ module.exports = {
   register,
   login,
   me,
+  updateMe,
+  getAddresses,
+  addAddress,
+  editAddress,
+  setAddressAsDefault,
+  removeAddress,
   introspect,
   refresh,
   logout,
