@@ -38,7 +38,8 @@ const config = {
     order: process.env.ORDERS_SERVICE_URL || 'http://localhost:3003',
     messaging: process.env.MESSAGING_SERVICE_URL || 'http://localhost:3004',
     ai: process.env.AI_SERVICE_URL || 'http://localhost:3005',
-    pepper: process.env.PEPPER_SERVICE_URL || 'http://localhost:3006'
+    pepper: process.env.PEPPER_SERVICE_URL || 'http://localhost:3006',
+    pepperPrimary: process.env.PEPPER_PRIMARY_URL || 'http://localhost:3007'
   }
 };
 

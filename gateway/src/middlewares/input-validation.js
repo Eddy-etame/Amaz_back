@@ -41,6 +41,12 @@ function createGatewayValidationMiddleware() {
       }
     }
 
+    if (method === 'PUT' && path === '/auth/me') {
+      if (!hasValidEmail(body.email)) {
+        return createValidationResponse(res, req.requestId, 'email valide requis');
+      }
+    }
+
     if (method === 'POST' && path === '/auth/login') {
       if (!hasValidEmail(body.email) || !hasNonEmptyString(body.password)) {
         return createValidationResponse(res, req.requestId, 'email et password requis');
@@ -94,6 +100,15 @@ function createGatewayValidationMiddleware() {
       const items = Array.isArray(body.items) ? body.items : body.articles;
       if (!Array.isArray(items) || items.length === 0) {
         return createValidationResponse(res, req.requestId, 'items/articles requis');
+      }
+    }
+
+    if (
+      (method === 'POST' && path === '/addresses') ||
+      (method === 'PUT' && path.startsWith('/addresses/'))
+    ) {
+      if (!hasNonEmptyString(body.street) || !hasNonEmptyString(body.city) || !hasNonEmptyString(body.country)) {
+        return createValidationResponse(res, req.requestId, 'street, city et country requis');
       }
     }
 

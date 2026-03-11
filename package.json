@@ -17,6 +17,9 @@
     "start:ai": "npm --workspace ai-service run start",
     "start:pepper": "npm --workspace pepper-service run start",
     "db:mongo:init": "node ./db/mongo/init.js",
+    "db:postgres:seed": "node ./db/postgres/seed.js",
+    "db:postgres:seed:docker": "docker compose --profile tools run --rm seed",
+    "db:seed": "npm run db:mongo:init && npm run db:postgres:seed",
     "test": "node ./scripts/run-smoke-tests.js",
     "qa:campaign": "node ./scripts/run-qa-campaign.js"
   },
@@ -27,5 +30,10 @@
   ],
   "author": "",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mongodb": "^6.10.0",
+    "pg": "^8.11.3"
+  }
 }
