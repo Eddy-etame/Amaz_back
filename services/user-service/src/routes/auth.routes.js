@@ -1,10 +1,17 @@
 const express = require('express');
 const { buildFingerprint } = require('../../../../shared/utils/fingerprint');
+const { sendEmail, sendTransactionalEmail } = require('../services/notification.service');
 
 const {
   register,
   login,
   me,
+  updateMe,
+  getAddresses,
+  addAddress,
+  editAddress,
+  setAddressAsDefault,
+  removeAddress,
   introspect,
   refresh,
   logout,
@@ -108,6 +115,94 @@ function createAuthRouter() {
   router.get('/me', requireGatewayAuth, async (req, res, next) => {
     try {
       const result = await me({ userId: req.auth.userId });
+      res.status(result.status).json({
+        ...result.body,
+        requestId: req.requestId
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put('/me', requireGatewayAuth, async (req, res, next) => {
+    try {
+      const result = await updateMe({
+        userId: req.auth.userId,
+        payload: req.body
+      });
+      res.status(result.status).json({
+        ...result.body,
+        requestId: req.requestId
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/addresses', requireGatewayAuth, async (req, res, next) => {
+    try {
+      const result = await getAddresses({ userId: req.auth.userId });
+      res.status(result.status).json({
+        ...result.body,
+        requestId: req.requestId
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/addresses', requireGatewayAuth, async (req, res, next) => {
+    try {
+      const result = await addAddress({
+        userId: req.auth.userId,
+        payload: req.body
+      });
+      res.status(result.status).json({
+        ...result.body,
+        requestId: req.requestId
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put('/addresses/:addressId', requireGatewayAuth, async (req, res, next) => {
+    try {
+      const result = await editAddress({
+        userId: req.auth.userId,
+        addressId: String(req.params.addressId || '').trim(),
+        payload: req.body
+      });
+      res.status(result.status).json({
+        ...result.body,
+        requestId: req.requestId
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put('/addresses/:addressId/default', requireGatewayAuth, async (req, res, next) => {
+    try {
+      const result = await setAddressAsDefault({
+        userId: req.auth.userId,
+        addressId: String(req.params.addressId || '').trim()
+      });
+      res.status(result.status).json({
+        ...result.body,
+        requestId: req.requestId
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete('/addresses/:addressId', requireGatewayAuth, async (req, res, next) => {
+    try {
+      const result = await removeAddress({
+        userId: req.auth.userId,
+        addressId: String(req.params.addressId || '').trim()
+      });
       res.status(result.status).json({
         ...result.body,
         requestId: req.requestId
@@ -230,6 +325,49 @@ function createAuthRouter() {
       });
     } catch (error) {
       next(error);
+    }
+  });
+
+  router.post('/internal/notifications/email', async (req, res, next) => {
+    try {
+      const to = String(req.body?.to || '').trim();
+      if (!to) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'to requis'
+          },
+          requestId: req.requestId
+        });
+      }
+
+      if (req.body?.type) {
+        await sendTransactionalEmail({
+          to,
+          type: String(req.body.type),
+          templateData: req.body.templateData || {},
+          requestId: req.requestId
+        });
+      } else {
+        await sendEmail({
+          to,
+          subject: String(req.body?.subject || 'Notification Amaz'),
+          text: String(req.body?.text || '').trim(),
+          type: 'internal_email',
+          requestId: req.requestId
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          accepted: true
+        },
+        requestId: req.requestId
+      });
+    } catch (error) {
+      return next(error);
     }
   });
 

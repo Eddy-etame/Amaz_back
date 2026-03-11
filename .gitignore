@@ -2,4 +2,6 @@
 /node_modules
 /db
 docker-compose.yml
+.env
+docker-compose.full.yml
 *.log
