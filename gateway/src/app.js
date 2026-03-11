@@ -214,6 +214,23 @@ function createApp() {
     }
   });
 
+  app.use('/api/v1/addresses', async (req, res, next) => {
+    try {
+      await authMiddleware(req, res, async () => {
+        await forwardProxy({
+          req,
+          res,
+          serviceBaseUrl: config.services.user,
+          targetPath: normalizeDownstreamPath(req.originalUrl),
+          internalSecret: config.internalSharedSecret,
+          serviceName: 'user'
+        });
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use('/api/v1/produits', async (req, res, next) => {
     try {
       if (req.method !== 'GET') {

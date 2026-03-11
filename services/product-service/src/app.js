@@ -48,10 +48,14 @@ function requireOrderServiceCaller(req, res, next) {
 
 function mapProduct(product) {
   return {
-    id: product._id?.toString() || product.id,
+    id: product.id || product._id?.toString(),
     title: product.title,
     titre: product.title,
     description: product.description || '',
+    shortDescription: product.shortDescription || '',
+    descriptionCourte: product.shortDescription || '',
+    detailedDescription: product.detailedDescription || '',
+    descriptionDetaillee: product.detailedDescription || '',
     price: product.price,
     prix: product.price,
     category: product.category || 'Général',
@@ -59,10 +63,28 @@ function mapProduct(product) {
     city: product.city || '',
     ville: product.city || '',
     stock: product.stock ?? 0,
+    sku: product.sku || '',
+    lowStockThreshold: product.lowStockThreshold ?? 5,
     image: product.image || '',
+    imagePrincipale: product.image || '',
     gallery: product.gallery || [],
+    galerie: product.gallery || [],
     vendorId: product.vendorId,
     status: product.status || 'published',
+    rating: Number(product.rating || 0),
+    note: Number(product.rating || 0),
+    reviewCount: Number(product.reviewCount || 0),
+    nbAvis: Number(product.reviewCount || 0),
+    strikethroughPrice:
+      product.strikethroughPrice === null || product.strikethroughPrice === undefined
+        ? null
+        : Number(product.strikethroughPrice),
+    prixBarre:
+      product.strikethroughPrice === null || product.strikethroughPrice === undefined
+        ? null
+        : Number(product.strikethroughPrice),
+    freeShipping: Boolean(product.freeShipping),
+    livraisonGratuite: Boolean(product.freeShipping),
     createdAt: product.createdAt,
     updatedAt: product.updatedAt
   };
@@ -127,9 +149,10 @@ function createApp() {
         filter.price = { ...(filter.price || {}), $lte: priceMax };
       }
 
-      if (req.query.status) {
-        filter.status = String(req.query.status);
-      } else {
+      const statusFilter = String(req.query.status || '').trim();
+      if (statusFilter && statusFilter !== 'all') {
+        filter.status = statusFilter;
+      } else if (!statusFilter) {
         filter.status = { $ne: 'archived' };
       }
       if (req.query.vendorId) {
@@ -223,15 +246,35 @@ function createApp() {
       const doc = {
         id: randomId('prd'),
         title,
-        description: String(payload.description || '').trim(),
+        description: String(
+          payload.description ||
+            payload.descriptionDetaillee ||
+            payload.descriptionCourte ||
+            ''
+        ).trim(),
+        shortDescription: String(payload.shortDescription || payload.descriptionCourte || '').trim(),
+        detailedDescription: String(
+          payload.detailedDescription || payload.descriptionDetaillee || payload.description || ''
+        ).trim(),
         price,
         category: String(payload.category || payload.categorie || 'Général'),
         city: String(payload.city || payload.ville || ''),
         stock: Number(payload.stock || 0),
+        sku: String(payload.sku || '').trim(),
+        lowStockThreshold: Number(payload.lowStockThreshold || 5),
         image: String(payload.image || ''),
         gallery: Array.isArray(payload.gallery) ? payload.gallery.slice(0, 10) : [],
         vendorId,
         status,
+        rating: Number(payload.rating || payload.note || 0),
+        reviewCount: Number(payload.reviewCount || payload.nbAvis || 0),
+        strikethroughPrice:
+          payload.strikethroughPrice === null || payload.prixBarre === null
+            ? null
+            : payload.strikethroughPrice !== undefined || payload.prixBarre !== undefined
+              ? Number(payload.strikethroughPrice ?? payload.prixBarre)
+              : null,
+        freeShipping: Boolean(payload.freeShipping ?? payload.livraisonGratuite),
         createdAt: now,
         updatedAt: now
       };
@@ -289,6 +332,22 @@ function createApp() {
       if (patch.categorie && !patch.category) patch.category = patch.categorie;
       if (patch.ville && !patch.city) patch.city = patch.ville;
       if (patch.stock !== undefined) patch.stock = Number(patch.stock);
+      if (patch.lowStockThreshold !== undefined) patch.lowStockThreshold = Number(patch.lowStockThreshold);
+      if (patch.descriptionCourte !== undefined && patch.shortDescription === undefined) {
+        patch.shortDescription = String(patch.descriptionCourte || '').trim();
+      }
+      if (patch.descriptionDetaillee !== undefined && patch.detailedDescription === undefined) {
+        patch.detailedDescription = String(patch.descriptionDetaillee || '').trim();
+      }
+      if (patch.note !== undefined && patch.rating === undefined) patch.rating = Number(patch.note);
+      if (patch.nbAvis !== undefined && patch.reviewCount === undefined) patch.reviewCount = Number(patch.nbAvis);
+      if (patch.prixBarre !== undefined && patch.strikethroughPrice === undefined) {
+        patch.strikethroughPrice =
+          patch.prixBarre === null || patch.prixBarre === '' ? null : Number(patch.prixBarre);
+      }
+      if (patch.livraisonGratuite !== undefined && patch.freeShipping === undefined) {
+        patch.freeShipping = Boolean(patch.livraisonGratuite);
+      }
       if (patch.status !== undefined) {
         const nextStatus = String(patch.status);
         if (!['draft', 'published', 'archived'].includes(nextStatus)) {
@@ -309,6 +368,12 @@ function createApp() {
       delete patch.prix;
       delete patch.categorie;
       delete patch.ville;
+      delete patch.descriptionCourte;
+      delete patch.descriptionDetaillee;
+      delete patch.note;
+      delete patch.nbAvis;
+      delete patch.prixBarre;
+      delete patch.livraisonGratuite;
 
       const result = await collection.findOneAndUpdate(
         filter,

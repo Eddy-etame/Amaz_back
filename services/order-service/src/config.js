@@ -14,6 +14,7 @@ const config = {
   host: process.env.ORDER_SERVICE_HOST || '0.0.0.0',
   internalSharedSecret: requiredSecret('INTERNAL_SHARED_SECRET'),
   productServiceUrl: process.env.PRODUCTS_SERVICE_URL || 'http://localhost:3002',
+  userServiceUrl: process.env.USERS_SERVICE_URL || 'http://localhost:3001',
   internalFetchTimeoutMs: Number(process.env.INTERNAL_FETCH_TIMEOUT_MS || 7000)
 };
 

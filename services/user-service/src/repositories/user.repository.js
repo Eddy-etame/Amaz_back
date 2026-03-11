@@ -62,7 +62,7 @@ async function findUserById(userId) {
         role,
         email_verified,
         sms_verified
-      FROM users
+      FROM user_accounts
       WHERE id = $1
       LIMIT 1
     `,
@@ -153,6 +153,24 @@ async function updatePassword({ userId, passwordHash, passwordSalt }) {
   );
 }
 
+async function updateUserProfile({ userId, email, phone, username }) {
+  const pool = getPostgresPool();
+  const result = await pool.query(
+    `
+      UPDATE users
+      SET email = lower($2),
+          phone = $3,
+          username = $4,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING id
+    `,
+    [userId, email, phone || null, username || null]
+  );
+
+  return result.rowCount > 0;
+}
+
 async function markVerification({ userId, channel }) {
   const pool = getPostgresPool();
   if (channel === 'sms') {
@@ -198,6 +216,7 @@ module.exports = {
   findUserById,
   createUser,
   createVendor,
+  updateUserProfile,
   updatePassword,
   markVerification,
   insertSecurityEvent

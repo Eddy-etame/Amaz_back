@@ -35,18 +35,107 @@ function parseOrderItems(payload = {}) {
 }
 
 function mapOrderRow(row) {
+  const rawItems = Array.isArray(row.items) ? row.items : [];
+  const shippingAddress = row.shipping_address || null;
+
   return {
     id: row.id,
     userId: row.user_id,
+    userName: row.user_name || 'Client',
+    userEmail: row.user_email || '',
+    userPhone: row.user_phone || '',
     status: row.status,
     total: Number(row.total_amount),
+    currency: row.currency || 'EUR',
     estimatedDeliveryAt: row.estimated_delivery_at,
     deliveredAt: row.delivered_at,
-    shippingAddress: row.shipping_address,
+    shippingAddress,
+    shippingCity: shippingAddress?.city || '',
+    shippingAddressText: [
+      shippingAddress?.street,
+      [shippingAddress?.postalCode, shippingAddress?.city].filter(Boolean).join(' '),
+      shippingAddress?.country
+    ]
+      .filter(Boolean)
+      .join(', '),
     paymentStatus: row.payment_status,
-    items: row.items,
+    paymentMethod: row.payment_method || 'card',
+    items: rawItems.map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      title: item.title,
+      productName: item.title,
+      price: Number(item.price),
+      unitPrice: Number(item.price),
+      quantity: Number(item.quantity),
+      vendorId: item.vendorId,
+      image: item.image || ''
+    })),
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+
+async function fetchUserContact(userId) {
+  const pool = getPostgresPool();
+  const result = await pool.query(
+    `
+      SELECT id, username, email, phone
+      FROM user_accounts
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [userId]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function sendOrderNotification({
+  type,
+  orderId,
+  userId,
+  userEmail,
+  userName,
+  total,
+  requestId
+}) {
+  if (!userEmail) {
+    return;
+  }
+
+  await internalFetch({
+    baseUrl: config.userServiceUrl,
+    path: '/internal/notifications/email',
+    method: 'POST',
+    body: {
+      type,
+      to: userEmail,
+      templateData: {
+        userId,
+        userName: userName || 'Client',
+        orderId,
+        total
+      }
+    },
+    callerService: 'order-service',
+    secret: config.internalSharedSecret,
+    requestId,
+    timeoutMs: config.internalFetchTimeoutMs
+  }).catch(() => undefined);
+}
+
+function mapOrderForRole(row, role, authUserId) {
+  const mapped = mapOrderRow(row);
+  if (role !== 'vendor') {
+    return mapped;
+  }
+
+  const vendorItems = mapped.items.filter((item) => item.vendorId === authUserId);
+  return {
+    ...mapped,
+    items: vendorItems,
+    total: vendorItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   };
 }
 
@@ -188,6 +277,7 @@ function createApp() {
       const estimatedDeliveryAt = estimateDeliveryIso();
       const total = enrichedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
       const shippingAddress = req.body?.adresseLivraison || req.body?.shippingAddress || {};
+      const paymentMethod = String(req.body?.methodePaiement || req.body?.paymentMethod || 'card');
 
       const pool = getPostgresPool();
       const client = await pool.connect();
@@ -203,11 +293,12 @@ function createApp() {
               currency,
               estimated_delivery_at,
               shipping_address,
-              payment_status
+              payment_status,
+              payment_method
             )
-            VALUES ($1, $2, 'confirmed', $3, 'EUR', $4, $5::jsonb, 'authorized')
+            VALUES ($1, $2, 'confirmed', $3, 'EUR', $4, $5::jsonb, 'authorized', $6)
           `,
-          [orderId, userId, total, estimatedDeliveryAt, JSON.stringify(shippingAddress)]
+          [orderId, userId, total, estimatedDeliveryAt, JSON.stringify(shippingAddress), paymentMethod]
         );
 
         for (const item of enrichedItems) {
@@ -253,6 +344,17 @@ function createApp() {
         client.release();
       }
 
+      const userContact = await fetchUserContact(userId);
+      await sendOrderNotification({
+        type: 'order_confirmation',
+        orderId,
+        userId,
+        userEmail: userContact?.email,
+        userName: userContact?.username,
+        total,
+        requestId: req.requestId
+      });
+
       return res.status(201).json({
         success: true,
         data: {
@@ -261,7 +363,18 @@ function createApp() {
           status: 'confirmed',
           estimatedDeliveryAt,
           total,
-          items: enrichedItems
+          shippingAddress,
+          paymentMethod,
+          items: enrichedItems.map((item) => ({
+            productId: item.productId,
+            title: item.title,
+            productName: item.title,
+            price: item.price,
+            unitPrice: item.price,
+            quantity: item.quantity,
+            vendorId: item.vendorId,
+            image: item.image
+          }))
         },
         requestId: req.requestId
       });
@@ -320,6 +433,9 @@ function createApp() {
         `
           SELECT
             o.*,
+            u.username AS user_name,
+            u.email AS user_email,
+            u.phone AS user_phone,
             COALESCE(
               json_agg(
                 json_build_object(
@@ -335,9 +451,10 @@ function createApp() {
               '[]'::json
             ) AS items
           FROM orders o
+          LEFT JOIN user_accounts u ON u.id = o.user_id
           LEFT JOIN order_items i ON i.order_id = o.id
           ${whereClause}
-          GROUP BY o.id
+          GROUP BY o.id, u.username, u.email, u.phone
           ORDER BY o.created_at DESC
           LIMIT $${values.length - 1}
           OFFSET $${values.length}
@@ -359,7 +476,7 @@ function createApp() {
       return res.status(200).json({
         success: true,
         data: {
-          items: listResult.rows.map(mapOrderRow),
+          items: listResult.rows.map((row) => mapOrderForRole(row, role, authUserId)),
           pagination: {
             page,
             limit,
@@ -391,6 +508,9 @@ function createApp() {
         `
           SELECT
             o.*,
+            u.username AS user_name,
+            u.email AS user_email,
+            u.phone AS user_phone,
             COALESCE(
               json_agg(
                 json_build_object(
@@ -406,9 +526,10 @@ function createApp() {
               '[]'::json
             ) AS items
           FROM orders o
+          LEFT JOIN user_accounts u ON u.id = o.user_id
           LEFT JOIN order_items i ON i.order_id = o.id
           WHERE o.id = $1
-          GROUP BY o.id
+          GROUP BY o.id, u.username, u.email, u.phone
           LIMIT 1
         `,
         [orderId]
@@ -441,7 +562,7 @@ function createApp() {
 
       return res.status(200).json({
         success: true,
-        data: mapOrderRow(order),
+        data: mapOrderForRole(order, role, authUserId),
         requestId: req.requestId
       });
     } catch (error) {
@@ -607,7 +728,7 @@ function createApp() {
               delivered_at = CASE WHEN $2 = 'delivered' THEN NOW() ELSE delivered_at END,
               updated_at = NOW()
           WHERE id = $1
-          RETURNING id, status
+          RETURNING id, status, user_id, total_amount
         `,
         [orderId, nextStatus]
       );
@@ -616,6 +737,20 @@ function createApp() {
         return res.status(404).json({
           success: false,
           error: { code: 'ORDER_NOT_FOUND', message: 'Commande introuvable' },
+          requestId: req.requestId
+        });
+      }
+
+      if (nextStatus === 'delivered') {
+        const updatedOrder = updated.rows[0];
+        const userContact = await fetchUserContact(updatedOrder.user_id);
+        await sendOrderNotification({
+          type: 'order_delivered',
+          orderId,
+          userId: updatedOrder.user_id,
+          userEmail: userContact?.email,
+          userName: userContact?.username,
+          total: Number(updatedOrder.total_amount || 0),
           requestId: req.requestId
         });
       }
