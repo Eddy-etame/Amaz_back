@@ -1,0 +1,66 @@
+function limiterRequetes() {
+
+  const limiteRequetes = 30; 
+  // maximum de requêtes autorisées
+
+  const duree = 60000; 
+  // durée de la limite : 1 minute
+
+  const compteur = {}; 
+  // stocke le nombre de requêtes par utilisateur
+
+  const listeNoire = []; 
+  // stocke les utilisateurs bannis
+
+  return function(req, res, next) {
+
+    const adresseIP = req.ip; 
+    // adresse IP de l'utilisateur
+
+    const token = req.headers.authorization; 
+    // token si l'utilisateur est connecté
+
+    const identifiant = token ? token : adresseIP;
+    // si connecté → token
+    // sinon → adresse IP
+
+    if (listeNoire.includes(identifiant)) {
+      return res.status(403).send("Utilisateur banni");
+    }
+    // si l'utilisateur est déjà banni on bloque immédiatement
+
+    const tempsActuel = Date.now();
+
+    if (!compteur[identifiant]) {
+      compteur[identifiant] = {
+        nombre: 1,
+        finTemps: tempsActuel + duree
+      };
+      return next();
+    }
+
+    const donnees = compteur[identifiant];
+
+    if (tempsActuel > donnees.finTemps) {
+      donnees.nombre = 1;
+      donnees.finTemps = tempsActuel + duree;
+      return next();
+    }
+
+    donnees.nombre++;
+
+    if (donnees.nombre > limiteRequetes) {
+
+      // si l'utilisateur continue d'envoyer des requêtes
+      // on le bannit
+
+      listeNoire.push(identifiant);
+
+      return res.status(429).send("Trop de requêtes, utilisateur banni");
+    }
+
+    next();
+  };
+}
+
+module.exports = limiterRequetes;
