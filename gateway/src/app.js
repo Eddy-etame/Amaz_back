@@ -1,5 +1,10 @@
 const express = require('express');
 
+
+const verifierVPN = require("./middlewares/verifierVPN");
+
+app.use(verifierVPN);
+
 const { requestIdMiddleware } = require('../../shared/middleware/request-id');
 const { createPowMiddleware } = require('../../shared/middleware/pow-required');
 const { createRateLimitMiddleware } = require('../../shared/middleware/rate-limit');
