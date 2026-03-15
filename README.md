@@ -10,6 +10,29 @@ Microservices backend for the Amaz marketplace:
 - `services/ai-service`
 - `services/pepper-service`
 
+## Which URL should I open?
+
+| Goal | URL | Notes |
+|------|-----|-------|
+| **API calls (clients, Postman, frontend)** | `http://localhost:3000/api/v1/...` | Use the gateway. Requires PoW headers for `/api/v1/*` (users/vendors apps add these automatically). |
+| **Gateway health** | `http://localhost:3000/health` | Public. |
+| **Aggregate health (all services)** | `http://localhost:3000/health/aggregate` | Public. |
+| **Direct service liveness** | `http://localhost:3001/health` … `http://localhost:3006/health` | Public. Use for Docker/QA health checks. |
+| **Service info (root)** | `http://localhost:3001/` … `http://localhost:3006/` | Public. Returns usage hints. |
+| **Direct business routes** | `http://localhost:3002/produits`, etc. | **Do not use from browser.** Returns `INTERNAL_AUTH_REQUIRED` unless signed `x-internal-*` headers are present (gateway and internal callers only). |
+
+## Services overview
+
+| Service | Port | Purpose | Allowed direct callers |
+|---------|------|---------|------------------------|
+| gateway | 3000 | API entrypoint, PoW, rate limit, auth, proxy | Clients (with PoW) |
+| user-service | 3001 | Auth, users, addresses, notifications | gateway, order-service |
+| product-service | 3002 | Products, stock, reserve/release | gateway, order-service |
+| order-service | 3003 | Orders, checkout | gateway |
+| messaging-service | 3004 | User-vendor messaging, Socket.IO | gateway |
+| ai-service | 3005 | AI recommendations, bot auth | gateway |
+| pepper-service | 3006 | Password/token peppering (HMAC) | user-service |
+
 ## Constraints respected
 
 - Node.js + Express only
@@ -41,6 +64,23 @@ Start services in this order so dependencies are up:
 
 Health checks: use `GET http://localhost:3000/health/aggregate` to see gateway + all services status (e.g. from QA lab or `scripts/run-qa-campaign.js`).
 
+## Quick start
+
+From `Amaz_back`:
+
+```bash
+# 1. Start databases
+docker compose up -d
+
+# 2. Bootstrap DB (migrations + seed)
+npm run db:bootstrap
+
+# 3. Start full stack (use docker-compose.full.yml)
+docker compose -f docker-compose.full.yml up -d --build
+```
+
+Seeded users: `eddy.etame@enkoschools.com` / `Amaz@2026!` (see `db/postgres/seed.js`).
+
 ## Local DB orchestration (Docker)
 
 Run these commands from `Amaz_back`:
@@ -53,15 +93,37 @@ Run these commands from `Amaz_back`:
 
 ## Database bootstrap
 
-- PostgreSQL schema: `db/postgres/migrations/001_init.sql`
-- Mongo indexes bootstrap: `db/mongo/init.js`
-- Command examples:
-  - `psql -h localhost -U amaz -d amaz_db -f db/postgres/migrations/001_init.sql`
-  - `node db/mongo/init.js`
+**One command (recommended):**
+
+```bash
+npm run db:bootstrap
+```
+
+Runs all Postgres migrations (001–004) and seed, then Mongo init.
+
+**Manual steps:**
+
+- PostgreSQL: run migrations in order: `001_init.sql`, `002_vendors.sql`, `003_user_addresses.sql`, `004_user_accounts_view_fix.sql`
+- Postgres seed: `npm run db:postgres:seed`
+- Mongo init: `npm run db:mongo:init`
+
+## Testing
+
+**Prerequisites:** Docker (Postgres + Mongo), or full stack running.
+
+| Command | Description |
+|---------|-------------|
+| `npm test` | Smoke tests (static file/snippet checks, no services needed) |
+| `npm run qa:campaign` | Health checks on all services (requires stack running) |
+| `npm run test:e2e-auth` | E2E auth: login + GET /auth/me with PoW (requires gateway, user-service, pepper, Postgres) |
+
+**Postman:** `postman/amaz-backend-e2e.postman_collection.json` (requires PoW variables).
+
+**Docs:** Per-service Markdown in `docs/services/`. Generate PDFs: `npm run docs:pdf` (output: `docs/output/*.pdf`).
 
 ## QA pack
 
-- Smoke checks: `node scripts/run-smoke-tests.js`
+- Smoke checks: `npm test`
 - Postman collection: `postman/amaz-backend-e2e.postman_collection.json`
 - Security review checklist: `docs/security-risk-review.md`
 
