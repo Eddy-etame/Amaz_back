@@ -19,9 +19,13 @@
     "db:mongo:init": "node ./db/mongo/init.js",
     "db:postgres:seed": "node ./db/postgres/seed.js",
     "db:postgres:seed:docker": "docker compose --profile tools run --rm seed",
+    "db:postgres:seed:docker-full": "docker compose -f docker-compose.full.yml --profile tools run --rm seed",
     "db:seed": "npm run db:mongo:init && npm run db:postgres:seed",
+    "db:bootstrap": "node ./scripts/db-bootstrap.js",
     "test": "node ./scripts/run-smoke-tests.js",
-    "qa:campaign": "node ./scripts/run-qa-campaign.js"
+    "qa:campaign": "node ./scripts/run-qa-campaign.js",
+    "docs:pdf": "node ./scripts/generate-docs-pdf.js",
+    "test:e2e-auth": "node ./scripts/run-e2e-auth.js"
   },
   "keywords": [
     "microservices",
@@ -35,5 +39,8 @@
     "dotenv": "^16.4.5",
     "mongodb": "^6.10.0",
     "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "md-to-pdf": "^5.2.5"
   }
 }

@@ -19,6 +19,14 @@ function getPostgresPool() {
   return pool;
 }
 
+async function resetPostgresPool() {
+  if (pool) {
+    await pool.end();
+    pool = null;
+  }
+}
+
 module.exports = {
-  getPostgresPool
+  getPostgresPool,
+  resetPostgresPool
 };

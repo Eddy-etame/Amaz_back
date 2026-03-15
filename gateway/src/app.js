@@ -138,6 +138,23 @@ function createApp() {
   app.use(requestIdMiddleware);
   app.use(corsMiddleware);
 
+  app.get('/', (req, res) => {
+    res.json({
+      success: true,
+      data: {
+        service: 'gateway',
+        port: config.port,
+        message: 'Amaz API Gateway',
+        usage: {
+          api: 'Use http://localhost:3000/api/v1/... for API calls (requires PoW headers)',
+          health: 'GET /health or /health/aggregate for status'
+        },
+        requestId: req.requestId
+      },
+      requestId: req.requestId
+    });
+  });
+
   app.get('/health', (req, res) => {
     res.json({
       success: true,
