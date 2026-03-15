@@ -141,6 +141,24 @@ function createMessagingServer() {
     });
   });
 
+  app.get('/', (req, res) => {
+    res.json({
+      success: true,
+      data: {
+        service: 'messaging-service',
+        port: config.port,
+        message: 'Internal microservice. Do not call directly from clients.',
+        usage: {
+          apiCalls: 'Use http://localhost:3000/api/v1/... for client/API requests (via gateway)',
+          healthCheck: `Use http://localhost:${config.port}/health for liveness`,
+          businessRoutes: 'Direct business routes require x-internal-* signed headers (gateway only)'
+        },
+        requestId: req.requestId
+      },
+      requestId: req.requestId
+    });
+  });
+
   app.use(
     createInternalAuthMiddleware({
       secret: config.internalSharedSecret,
