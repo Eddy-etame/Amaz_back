@@ -139,6 +139,44 @@ function mapOrderForRole(row, role, authUserId) {
   };
 }
 
+async function insertOrderStatusHistory(queryable, { orderId, fromStatus, toStatus, actorType, actorId, metadata }) {
+  await queryable.query(
+    `
+      INSERT INTO order_status_history (order_id, from_status, to_status, actor_type, actor_id, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+    `,
+    [
+      orderId,
+      fromStatus ?? null,
+      toStatus,
+      actorType,
+      actorId ?? null,
+      metadata != null ? JSON.stringify(metadata) : null
+    ]
+  );
+}
+
+async function loadStatusHistoryForOrder(pool, orderId, limit = 20) {
+  const r = await pool.query(
+    `
+      SELECT
+        id::text AS id,
+        from_status AS "fromStatus",
+        to_status AS "toStatus",
+        actor_type AS "actorType",
+        actor_id AS "actorId",
+        metadata,
+        created_at AS "createdAt"
+      FROM order_status_history
+      WHERE order_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+    `,
+    [orderId, limit]
+  );
+  return r.rows;
+}
+
 async function fetchProduct(productId, requestId) {
   const response = await internalFetch({
     baseUrl: config.productServiceUrl,
@@ -152,7 +190,7 @@ async function fetchProduct(productId, requestId) {
 
   if (!response.ok || !response.payload?.data) {
     throw {
-      status: 400,
+      status: 404,
       code: 'PRODUCT_NOT_FOUND',
       publicMessage: `Produit introuvable: ${productId}`
     };
@@ -248,11 +286,16 @@ function createApp() {
 
     const rawItems = parseOrderItems(req.body || {});
     if (rawItems.length === 0) {
+      const hasPayload =
+        (Array.isArray(req.body?.articles) && req.body.articles.length > 0) ||
+        (Array.isArray(req.body?.items) && req.body.items.length > 0);
       return res.status(400).json({
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'articles/items requis'
+          message: hasPayload
+            ? 'Chaque article doit avoir un productId valide et une quantité (articles[].productId / quantité).'
+            : 'articles ou items non vides requis dans le corps JSON.'
         },
         requestId: req.requestId
       });
@@ -354,6 +397,14 @@ function createApp() {
           `,
           [randomId('pay'), orderId, total, randomId('provider')]
         );
+        await insertOrderStatusHistory(client, {
+          orderId,
+          fromStatus: null,
+          toStatus: 'confirmed',
+          actorType: 'user',
+          actorId: userId,
+          metadata: { source: 'checkout' }
+        });
         await client.query('COMMIT');
       } catch (error) {
         await client.query('ROLLBACK');
@@ -578,9 +629,19 @@ function createApp() {
         });
       }
 
+      let statusHistory = [];
+      try {
+        statusHistory = await loadStatusHistoryForOrder(pool, orderId, 20);
+      } catch {
+        statusHistory = [];
+      }
+
       return res.status(200).json({
         success: true,
-        data: mapOrderForRole(order, role, authUserId),
+        data: {
+          ...mapOrderForRole(order, role, authUserId),
+          statusHistory
+        },
         requestId: req.requestId
       });
     } catch (error) {
@@ -650,15 +711,33 @@ function createApp() {
         });
       }
 
-      await pool.query(
-        `
-          UPDATE orders
-          SET status = 'cancelled',
-              updated_at = NOW()
-          WHERE id = $1
-        `,
-        [orderId]
-      );
+      const cancelClient = await pool.connect();
+      try {
+        await cancelClient.query('BEGIN');
+        await cancelClient.query(
+          `
+            UPDATE orders
+            SET status = 'cancelled',
+                updated_at = NOW()
+            WHERE id = $1
+          `,
+          [orderId]
+        );
+        await insertOrderStatusHistory(cancelClient, {
+          orderId,
+          fromStatus: order.status,
+          toStatus: 'cancelled',
+          actorType: role === 'admin' ? 'system' : 'user',
+          actorId: authUserId,
+          metadata: null
+        });
+        await cancelClient.query('COMMIT');
+      } catch (e) {
+        await cancelClient.query('ROLLBACK');
+        throw e;
+      } finally {
+        cancelClient.release();
+      }
 
       const releaseItems = (Array.isArray(order.items) ? order.items : []).filter(
         (item) => String(item.productId || '').trim() && Number(item.quantity || 0) > 0
@@ -739,24 +818,64 @@ function createApp() {
         }
       }
 
-      const updated = await pool.query(
-        `
-          UPDATE orders
-          SET status = $2,
-              delivered_at = CASE WHEN $2 = 'delivered' THEN NOW() ELSE delivered_at END,
-              updated_at = NOW()
-          WHERE id = $1
-          RETURNING id, status, user_id, total_amount
-        `,
-        [orderId, nextStatus]
-      );
-
-      if (!updated.rowCount) {
+      const currentRow = await pool.query(`SELECT status FROM orders WHERE id = $1 LIMIT 1`, [orderId]);
+      if (!currentRow.rowCount) {
         return res.status(404).json({
           success: false,
           error: { code: 'ORDER_NOT_FOUND', message: 'Commande introuvable' },
           requestId: req.requestId
         });
+      }
+      const previousStatus = String(currentRow.rows[0].status || '');
+      if (previousStatus === nextStatus) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            id: orderId,
+            status: nextStatus
+          },
+          requestId: req.requestId
+        });
+      }
+
+      const actorType = role === 'admin' ? 'system' : 'vendor';
+      const stClient = await pool.connect();
+      let updated;
+      try {
+        await stClient.query('BEGIN');
+        updated = await stClient.query(
+          `
+            UPDATE orders
+            SET status = $2,
+                delivered_at = CASE WHEN $2 = 'delivered' THEN NOW() ELSE delivered_at END,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, status, user_id, total_amount
+          `,
+          [orderId, nextStatus]
+        );
+        if (!updated.rowCount) {
+          await stClient.query('ROLLBACK');
+          return res.status(404).json({
+            success: false,
+            error: { code: 'ORDER_NOT_FOUND', message: 'Commande introuvable' },
+            requestId: req.requestId
+          });
+        }
+        await insertOrderStatusHistory(stClient, {
+          orderId,
+          fromStatus: previousStatus,
+          toStatus: nextStatus,
+          actorType,
+          actorId: authUserId || null,
+          metadata: null
+        });
+        await stClient.query('COMMIT');
+      } catch (e) {
+        await stClient.query('ROLLBACK');
+        throw e;
+      } finally {
+        stClient.release();
       }
 
       if (nextStatus === 'delivered') {

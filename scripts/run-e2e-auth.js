@@ -122,7 +122,10 @@ async function main() {
 
     if (!loginPass) {
       console.log('Login FAIL:', loginRes.status, loginRes.data?.error?.message || loginRes.data?.error?.code || '');
-      if (loginRes.status === 400 && loginRes.data?.error?.code === 'POW_REQUIRED') {
+      if (
+        (loginRes.status === 400 || loginRes.status === 403) &&
+        loginRes.data?.error?.code === 'POW_REQUIRED'
+      ) {
         console.log('  -> PoW rejected. Check POW_DIFFICULTY and fingerprint.');
       }
       process.exitCode = 1;

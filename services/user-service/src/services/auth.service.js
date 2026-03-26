@@ -10,6 +10,7 @@ const {
   createVendor,
   updateUserProfile,
   updatePassword,
+  updateVendorApproval,
   markVerification,
   insertSecurityEvent
 } = require('../repositories/user.repository');
@@ -42,6 +43,7 @@ const {
   getActivePasswordResetRequest,
   consumePasswordResetRequest
 } = require('../repositories/otp.repository');
+const { addBlockedIp, removeBlockedIp, listBlockedIps } = require('../repositories/blocked-ips.repository');
 const { issueTokenPair, verifyAccessToken, verifyRefreshToken, parseAccessToken, tokenHash } = require('./token.service');
 const { buildPasswordHash, verifyPassword } = require('./password.service');
 const { sendOtp, maskDestination } = require('./notification.service');
@@ -312,6 +314,30 @@ async function login({ payload, fingerprintHash, ctx }) {
     return genericError;
   }
 
+  if (user.role === 'vendor' && user.approval_status !== 'approved') {
+    await insertSecurityEvent({
+      userId: user.id,
+      eventType: 'auth.login.failed',
+      requestId: ctx.requestId,
+      ipAddress: getIpAddress(ctx),
+      fingerprintHash,
+      metadata: { reason: 'vendor_not_approved' }
+    });
+    return {
+      status: 403,
+      body: {
+        success: false,
+        error: {
+          code: user.approval_status === 'rejected' ? 'VENDOR_REJECTED' : 'VENDOR_PENDING_APPROVAL',
+          message:
+            user.approval_status === 'rejected'
+              ? 'Votre compte vendeur a été refusé.'
+              : 'Votre compte vendeur est en attente d\'approbation par un administrateur.'
+        }
+      }
+    };
+  }
+
   const session = await createSessionForUser({
     user,
     fingerprintHash,
@@ -363,6 +389,205 @@ async function me({ userId }) {
       success: true,
       data: {
         user: toPublicUser(user)
+      }
+    }
+  };
+}
+
+async function approveVendor({ vendorId, adminUserId, ctx }) {
+  const vendor = await findUserById(vendorId);
+  if (!vendor || vendor.role !== 'vendor') {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        error: {
+          code: 'VENDOR_NOT_FOUND',
+          message: 'Vendeur introuvable'
+        }
+      }
+    };
+  }
+
+  await updateVendorApproval({
+    vendorId,
+    approvalStatus: 'approved',
+    approvedBy: adminUserId
+  });
+
+  await insertSecurityEvent({
+    userId: adminUserId,
+    eventType: 'admin.vendor_approved',
+    severity: 'info',
+    requestId: ctx.requestId,
+    ipAddress: getIpAddress(ctx),
+    metadata: { vendorId }
+  });
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      data: { vendorId, approvalStatus: 'approved' }
+    }
+  };
+}
+
+async function rejectVendor({ vendorId, adminUserId, ctx }) {
+  const vendor = await findUserById(vendorId);
+  if (!vendor || vendor.role !== 'vendor') {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        error: {
+          code: 'VENDOR_NOT_FOUND',
+          message: 'Vendeur introuvable'
+        }
+      }
+    };
+  }
+
+  await updateVendorApproval({
+    vendorId,
+    approvalStatus: 'rejected',
+    approvedBy: null
+  });
+
+  await insertSecurityEvent({
+    userId: adminUserId,
+    eventType: 'admin.vendor_rejected',
+    severity: 'info',
+    requestId: ctx.requestId,
+    ipAddress: getIpAddress(ctx),
+    metadata: { vendorId }
+  });
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      data: { vendorId, approvalStatus: 'rejected' }
+    }
+  };
+}
+
+async function addBlockedIpAdmin({ ipAddress, reason, adminUserId, ctx }) {
+  const ip = String(ipAddress || '').trim();
+  if (!ip) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Adresse IP requise'
+        }
+      }
+    };
+  }
+
+  try {
+    await addBlockedIp({
+      ipAddress: ip,
+      reason: reason || null,
+      blockedBy: adminUserId
+    });
+  } catch (err) {
+    if (err.code === '23505') {
+      return {
+        status: 409,
+        body: {
+          success: false,
+          error: {
+            code: 'IP_ALREADY_BLOCKED',
+            message: 'Cette adresse IP est déjà bloquée'
+          }
+        }
+      };
+    }
+    throw err;
+  }
+
+  await insertSecurityEvent({
+    userId: adminUserId,
+    eventType: 'admin.ip_blocked',
+    severity: 'info',
+    requestId: ctx.requestId,
+    ipAddress: getIpAddress(ctx),
+    metadata: { blockedIp: ip, reason: reason || null }
+  });
+
+  return {
+    status: 201,
+    body: {
+      success: true,
+      data: { ipAddress: ip }
+    }
+  };
+}
+
+async function removeBlockedIpAdmin({ ipAddress, adminUserId, ctx }) {
+  const ip = String(ipAddress || '').trim();
+  if (!ip) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Adresse IP requise'
+        }
+      }
+    };
+  }
+
+  const removed = await removeBlockedIp(ip);
+  if (!removed) {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        error: {
+          code: 'IP_NOT_BLOCKED',
+          message: 'Cette adresse IP n\'est pas dans la liste des bloquées'
+        }
+      }
+    };
+  }
+
+  await insertSecurityEvent({
+    userId: adminUserId,
+    eventType: 'admin.ip_unblocked',
+    severity: 'info',
+    requestId: ctx.requestId,
+    ipAddress: getIpAddress(ctx),
+    metadata: { unblockedIp: ip }
+  });
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      data: { ipAddress: ip, removed: true }
+    }
+  };
+}
+
+async function listBlockedIpsAdmin() {
+  const items = await listBlockedIps();
+  return {
+    status: 200,
+    body: {
+      success: true,
+      data: {
+        items: items.map((r) => ({
+          id: r.id,
+          ip_address: r.ip_address,
+          reason: r.reason,
+          blocked_by: r.blocked_by,
+          blocked_at: r.blocked_at
+        }))
       }
     }
   };
@@ -1371,11 +1596,77 @@ async function resetPassword({ payload, ctx }) {
   };
 }
 
+/**
+ * Internal-only admin check for AdminJS (POST /internal/admin/authenticate).
+ * Caller must use signed internal requests from admin-service; still verify role + password here.
+ */
+async function authenticateAdmin({ email, password }) {
+  const e = String(email || '').trim();
+  const p = String(password || '');
+  if (!e || !p) {
+    return { ok: false };
+  }
+
+  const requestId = 'internal-admin-authenticate';
+  const user = await findUserByEmail(e);
+  if (!user) {
+    await insertSecurityEvent({
+      eventType: 'admin.authenticate.failed',
+      requestId,
+      metadata: { reason: 'unknown_user' }
+    });
+    return { ok: false };
+  }
+
+  if (user.role !== 'admin') {
+    await insertSecurityEvent({
+      userId: user.id,
+      eventType: 'admin.authenticate.failed',
+      requestId,
+      metadata: { reason: 'not_admin' }
+    });
+    return { ok: false };
+  }
+
+  const valid = await verifyPassword({
+    password: p,
+    passwordHash: user.password_hash,
+    passwordSalt: user.password_salt,
+    requestId
+  });
+  if (!valid) {
+    await insertSecurityEvent({
+      userId: user.id,
+      eventType: 'admin.authenticate.failed',
+      requestId,
+      metadata: { reason: 'bad_password' }
+    });
+    return { ok: false };
+  }
+
+  await insertSecurityEvent({
+    userId: user.id,
+    eventType: 'admin.authenticate.success',
+    requestId
+  });
+
+  return {
+    ok: true,
+    user: toPublicUser(user)
+  };
+}
+
 module.exports = {
   register,
   login,
+  authenticateAdmin,
   me,
   updateMe,
+  approveVendor,
+  rejectVendor,
+  addBlockedIpAdmin,
+  removeBlockedIpAdmin,
+  listBlockedIpsAdmin,
   getAddresses,
   addAddress,
   editAddress,

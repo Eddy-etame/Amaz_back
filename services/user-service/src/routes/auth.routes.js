@@ -5,8 +5,14 @@ const { sendEmail, sendTransactionalEmail } = require('../services/notification.
 const {
   register,
   login,
+  authenticateAdmin,
   me,
   updateMe,
+  approveVendor,
+  rejectVendor,
+  addBlockedIpAdmin,
+  removeBlockedIpAdmin,
+  listBlockedIpsAdmin,
   getAddresses,
   addAddress,
   editAddress,
@@ -50,6 +56,20 @@ function requireGatewayAuth(req, res, next) {
     role: (req.headers['x-auth-role'] || '').toString().trim() || 'user',
     email: (req.headers['x-auth-email'] || '').toString().trim()
   };
+  return next();
+}
+
+function requireAdmin(req, res, next) {
+  if (req.auth?.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'ADMIN_REQUIRED',
+        message: 'Accès administrateur requis'
+      },
+      requestId: req.requestId
+    });
+  }
   return next();
 }
 
@@ -368,6 +388,119 @@ function createAuthRouter() {
       });
     } catch (error) {
       return next(error);
+    }
+  });
+
+  router.patch(
+    '/admin/vendors/:id/approve',
+    requireGatewayAuth,
+    requireAdmin,
+    async (req, res, next) => {
+      try {
+        const ctx = getRequestContext(req);
+        const result = await approveVendor({
+          vendorId: String(req.params.id || '').trim(),
+          adminUserId: req.auth.userId,
+          ctx
+        });
+        res.status(result.status).json({
+          ...result.body,
+          requestId: req.requestId
+        });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  router.patch(
+    '/admin/vendors/:id/reject',
+    requireGatewayAuth,
+    requireAdmin,
+    async (req, res, next) => {
+      try {
+        const ctx = getRequestContext(req);
+        const result = await rejectVendor({
+          vendorId: String(req.params.id || '').trim(),
+          adminUserId: req.auth.userId,
+          ctx
+        });
+        res.status(result.status).json({
+          ...result.body,
+          requestId: req.requestId
+        });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  router.get('/admin/ip-blocklist', requireGatewayAuth, requireAdmin, async (req, res, next) => {
+    try {
+      const result = await listBlockedIpsAdmin();
+      res.status(result.status).json({
+        ...result.body,
+        requestId: req.requestId
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/admin/ip-blocklist', requireGatewayAuth, requireAdmin, async (req, res, next) => {
+    try {
+      const ctx = getRequestContext(req);
+      const result = await addBlockedIpAdmin({
+        ipAddress: req.body?.ip_address || req.body?.ipAddress,
+        reason: req.body?.reason,
+        adminUserId: req.auth.userId,
+        ctx
+      });
+      res.status(result.status).json({
+        ...result.body,
+        requestId: req.requestId
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete('/admin/ip-blocklist/:ip', requireGatewayAuth, requireAdmin, async (req, res, next) => {
+    try {
+      const ctx = getRequestContext(req);
+      const ip = decodeURIComponent(String(req.params.ip || '').trim());
+      const result = await removeBlockedIpAdmin({
+        ipAddress: ip,
+        adminUserId: req.auth.userId,
+        ctx
+      });
+      res.status(result.status).json({
+        ...result.body,
+        requestId: req.requestId
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/internal/admin/authenticate', async (req, res, next) => {
+    try {
+      const { email, password } = req.body || {};
+      const result = await authenticateAdmin({ email, password });
+      if (!result.ok) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'INVALID_CREDENTIALS', message: 'Identifiants invalides' },
+          requestId: req.requestId
+        });
+      }
+      return res.status(200).json({
+        success: true,
+        data: { user: result.user },
+        requestId: req.requestId
+      });
+    } catch (error) {
+      next(error);
     }
   });
 

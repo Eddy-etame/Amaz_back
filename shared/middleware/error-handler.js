@@ -12,7 +12,16 @@ function notFoundHandler(req, res) {
 function errorHandler(err, req, res, _next) {
   const status = err.status || 500;
   const code = err.code || 'INTERNAL_ERROR';
-  const message = status >= 500 ? 'Erreur interne' : err.publicMessage || err.message || 'Erreur requête';
+  // PostgreSQL undefined_column — often stale DB vs code (run npm run db:bootstrap from Amaz_back)
+  const pgMissingColumn = code === '42703';
+  const colHint =
+    pgMissingColumn && err.column ? ` (${String(err.column)})` : '';
+  const message =
+    status >= 500
+      ? pgMissingColumn
+        ? `Schéma base de données incomplet (colonne manquante${colHint}). Si vous utilisez Docker: npm run db:bootstrap:docker. Sinon: npm run db:bootstrap (même Postgres que les conteneurs, ex. localhost:5432 → amaz-postgres).`
+        : 'Erreur interne'
+      : err.publicMessage || err.message || 'Erreur requête';
 
   if (status >= 500) {
     // eslint-disable-next-line no-console

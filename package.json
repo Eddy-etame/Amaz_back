@@ -6,7 +6,8 @@
   "main": "index.js",
   "workspaces": [
     "gateway",
-    "services/*"
+    "services/*",
+    "admin-service"
   ],
   "scripts": {
     "start:gateway": "npm --workspace gateway run start",
@@ -16,16 +17,21 @@
     "start:messaging": "npm --workspace messaging-service run start",
     "start:ai": "npm --workspace ai-service run start",
     "start:pepper": "npm --workspace pepper-service run start",
+    "start:admin": "npm --workspace admin-service run start",
     "db:mongo:init": "node ./db/mongo/init.js",
     "db:postgres:seed": "node ./db/postgres/seed.js",
     "db:postgres:seed:docker": "docker compose --profile tools run --rm seed",
     "db:postgres:seed:docker-full": "docker compose -f docker-compose.full.yml --profile tools run --rm seed",
     "db:seed": "npm run db:mongo:init && npm run db:postgres:seed",
     "db:bootstrap": "node ./scripts/db-bootstrap.js",
+    "db:bootstrap:docker": "docker compose -f docker-compose.full.yml --profile tools run --rm bootstrap",
     "test": "node ./scripts/run-smoke-tests.js",
     "qa:campaign": "node ./scripts/run-qa-campaign.js",
     "docs:pdf": "node ./scripts/generate-docs-pdf.js",
-    "test:e2e-auth": "node ./scripts/run-e2e-auth.js"
+    "test:e2e-auth": "node ./scripts/run-e2e-auth.js",
+    "test:contract-smoke": "node ./scripts/health-and-contract-smoke.js",
+    "test:gateway-suite": "node ./scripts/run-gateway-api-suite.js",
+    "verify:local": "node ./scripts/run-verify-local.js"
   },
   "keywords": [
     "microservices",

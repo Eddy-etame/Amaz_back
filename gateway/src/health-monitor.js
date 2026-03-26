@@ -5,7 +5,8 @@
  */
 
 const HEALTH_CHECK_INTERVAL_MS = Number(process.env.HEALTH_CHECK_INTERVAL_MS || 15000);
-const HEALTH_CHECK_TIMEOUT_MS = Number(process.env.HEALTH_CHECK_TIMEOUT_MS || 2500);
+/** User-service can be slow to accept right after container start; 2.5s was too aggressive. */
+const HEALTH_CHECK_TIMEOUT_MS = Number(process.env.HEALTH_CHECK_TIMEOUT_MS || 8000);
 
 const serviceStatus = new Map();
 
@@ -19,18 +20,28 @@ async function checkOne(serviceName, baseUrl) {
     return;
   }
   const url = `${String(baseUrl).replace(/\/+$/, '')}/health`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
-  try {
-    const r = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    const ok = r.ok && r.status === 200;
-    serviceStatus.set(serviceName, { ok, code: r.status, lastCheck: Date.now() });
-  } catch (err) {
-    clearTimeout(timer);
-    const error = err?.name === 'AbortError' ? 'timeout' : (err?.code || err?.message || 'unreachable');
-    serviceStatus.set(serviceName, { ok: false, code: 0, error, lastCheck: Date.now() });
+  const attempts = Math.max(1, Number(process.env.HEALTH_CHECK_RETRIES) || 2);
+  let lastError = 'unreachable';
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
+    try {
+      const r = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      const ok = r.ok && r.status === 200;
+      serviceStatus.set(serviceName, { ok, code: r.status, lastCheck: Date.now() });
+      return;
+    } catch (err) {
+      clearTimeout(timer);
+      lastError = err?.name === 'AbortError' ? 'timeout' : (err?.code || err?.message || 'unreachable');
+      if (attempt < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
   }
+
+  serviceStatus.set(serviceName, { ok: false, code: 0, error: lastError, lastCheck: Date.now() });
 }
 
 async function runHealthChecks(services) {

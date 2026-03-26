@@ -51,7 +51,7 @@ async function getActiveSessionByAccessHash(accessTokenHash) {
     `
       SELECT s.*, u.email, u.role
       FROM sessions s
-      JOIN user_accounts u ON u.id = s.user_id
+      JOIN users u ON u.id = s.user_id
       WHERE s.access_token_hash = $1
         AND s.revoked_at IS NULL
         AND s.access_expires_at > NOW()

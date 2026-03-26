@@ -1,0 +1,111 @@
+**Voici le Contrat d’API mis à jour (Version 1.2)**
+
+J’ai appliqué ta demande : **PoW obligatoire sur TOUTES les routes externes** (comme dans le TP Autonomie et le code de référence que tu m’as donné). Le middleware PreuveDeTravail est maintenant appliqué globalement par le Gateway sur toutes les requêtes entrantes du front.
+
+### Contrat d’API – Version 1.2 (PoW sur tous les endpoints externes)
+
+**Conventions générales (mises à jour)**
+- PoW obligatoire sur **toutes les routes externes** (register, login, produits, commandes, messages, AI, bot, etc.).
+- Header requis sur chaque requête : `X-PoW-Proof` (string calculé par le client).
+- Le Gateway applique le middlewarePreuveDeTravail en premier sur toutes les routes (comme dans le code du TP Auth).
+- Erreurs toujours génériques et user-friendly en français (« Identifiants incorrects », « Preuve invalide », « Accès refusé », « Erreur interne »).
+- Authentification : Tokens HMAC-SHA256 maison (Bearer).
+- Internal calls (Gateway → microservices) : mTLS + headers X-User-Id / X-User-Role (pas de PoW, car confiance mutuelle).
+
+**Endpoints Authentification (Gateway)**
+
+- **POST /api/v1/auth/register**  
+  Body : `{ "email": string, "password": string (min 8), "username": string (optional) }`  
+  Headers : `X-PoW-Proof` (obligatoire)  
+  Response 201 : `{ "userId": UUID, "email": string, "role": string }`  
+  Erreurs : 400 « Champs manquants », 403 « Preuve invalide », 409 « Conflit données », 500 « Erreur interne ».
+
+- **POST /api/v1/auth/login**  
+  Body : `{ "email": string, "password": string }`  
+  Headers : `X-PoW-Proof` (obligatoire)  
+  Response 200 : `{ "token": string (HMAC), "userId": UUID, "role": string }`  
+  Erreurs : 401 « Identifiants incorrects », 403 « Preuve invalide ».
+
+- **GET /api/v1/auth/me**  
+  Headers : `Authorization: Bearer <token>` + `X-PoW-Proof` (obligatoire)  
+  Response 200 : `{ "userId": UUID, "email": string, "username": string, "role": string }`
+
+**Endpoints Utilisateurs**
+
+- **GET /api/v1/users/:userId**  
+  Headers : `Authorization: Bearer <token>` + `X-PoW-Proof` (obligatoire)  
+  Response 200 : `{ ... }`
+
+- **PUT /api/v1/users/:userId/role**  
+  Headers : `Authorization: Bearer <token>` + `X-PoW-Proof` (obligatoire)
+
+- **DELETE /api/v1/users/:userId**  
+  Headers : `Authorization: Bearer <token>` + `X-PoW-Proof` (obligatoire)
+
+**Endpoints Produits**
+
+- **POST /api/v1/produits**  
+  Headers : `Authorization: Bearer <token>` + `X-PoW-Proof` (obligatoire)
+
+- **GET /api/v1/produits** (recherche paginée)  
+  Headers : `X-PoW-Proof` (obligatoire) – même pour les routes publiques
+
+- **GET /api/v1/produits/:produitId**  
+  Headers : `X-PoW-Proof` (obligatoire)
+
+- **PUT /api/v1/produits/:produitId**  
+  Headers : `Authorization: Bearer <token>` + `X-PoW-Proof` (obligatoire)
+
+- **DELETE /api/v1/produits/:produitId**  
+  Headers : `Authorization: Bearer <token>` + `X-PoW-Proof` (obligatoire)
+
+**Endpoints Commandes**
+
+- **POST /api/v1/commandes**  
+  Headers : `Authorization: Bearer <token>` + `X-PoW-Proof` (obligatoire)
+
+- **GET /api/v1/commandes**  
+  Headers : `Authorization: Bearer <token>` + `X-PoW-Proof` (obligatoire)
+
+- **PUT /api/v1/commandes/:commandeId/annuler**  
+  Headers : `Authorization: Bearer <token>` + `X-PoW-Proof` (obligatoire)
+
+- **PUT /api/v1/commandes/:commandeId/statut**  
+  Headers : `Authorization: Bearer <token>` + `X-PoW-Proof` (obligatoire)
+
+**Endpoints Extras (Messagerie, AI, Bot)**
+
+- **POST /api/v1/messages**  
+  Headers : `Authorization: Bearer <token>` + `X-PoW-Proof` (obligatoire)
+
+- **GET /api/v1/messages/:produitId**  
+  Headers : `Authorization: Bearer <token>` + `X-PoW-Proof` (obligatoire)
+
+- **POST /api/v1/ai/recommendations**  
+  Headers : `Authorization: Bearer <token>` + `X-PoW-Proof` (obligatoire)
+
+- **POST /api/v1/bot/auth**  
+  Headers : `X-PoW-Proof` (obligatoire)
+
+**Endpoints Internes (Gateway → Microservices – mTLS uniquement)**  
+Pas de PoW (confiance interne).  
+Exemples :  
+- Users Service : POST /internal/users  
+- Products Service : GET /internal/produits/check-stock  
+- Orders Service : POST /internal/commandes  
+
+### Double-check de cohérence avec le projet annuel Marketplace
+
+✅ **PoW sur toutes les routes externes** : Maintenant 100 % conforme au TP Auth et au code que tu m’as fourni (middlewarePreuveDeTravail appliqué globalement).  
+✅ **Sécurité manuelle** : Salt + pepper microservice, timing-safe, HMAC tokens, rotation, fingerprint – tout respecté.  
+✅ **Gateway central** : Aucun métier dedans, routing + auth + PoW uniquement.  
+✅ **Hybrid DB** : PostgreSQL (commandes/utilisateurs) + MongoDB (produits/messages) – frontières claires.  
+✅ **Erreurs génériques** : Aucune fuite d’information (« Identifiants incorrects » au lieu de « mot de passe incorrect »).  
+✅ **Langue** : Tout en français (erreurs, commentaires, doc).  
+✅ **Focus marketplace** : Produits, commandes, messagerie, AI, bot – aucune référence à l’exercice mobilité.  
+✅ **Évolutivité** : Chaque service indépendant, contrats collectifs, prêt pour Proxmox/VLAN/mTLS (équipe Réseau).  
+
+Le contrat est maintenant parfaitement cohérent avec tout ce que nous avons établi depuis le début du projet annuel.
+
+Tu peux copier-coller cette version directement dans Cursor ou dans ton document partagé.  
+Si tu veux que je te donne le middleware PoW complet (en français, avec pepper) à mettre dans le Gateway, dis-le-moi et je te l’envoie tout de suite.

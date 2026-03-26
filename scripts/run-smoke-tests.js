@@ -34,7 +34,13 @@ function main() {
     'services/messaging-service/src/app.js',
     'services/pepper-service/src/app.js',
     'db/postgres/migrations/001_init.sql',
-    'db/mongo/init.js'
+    'db/postgres/migrations/007_order_status_history.sql',
+    'docs/openapi/gateway-v1.yaml',
+    'db/mongo/init.js',
+    'scripts/health-and-contract-smoke.js',
+    'scripts/run-gateway-api-suite.js',
+    'docs/CDC_ENTITES_DB.md',
+    'docs/CDC_DB_CROSSCHECK.md'
   ];
 
   for (const relativePath of requiredFiles) {
@@ -48,7 +54,9 @@ function main() {
       /createPowMiddleware\(/,
       /createRateLimitMiddleware\(/,
       /app\.use\('\/api\/v1\/auth'/,
-      /app\.use\('\/api\/v1\/messages'/
+      /app\.use\('\/api\/v1\/messages'/,
+      /isBotAuthPowOnly/,
+      /runMiddleware\(optionalAuthMiddleware/
     ]),
     'Gateway routes/security middleware not fully wired',
     failures
@@ -74,9 +82,21 @@ function main() {
       "app.post('/commandes'",
       "app.get('/commandes'",
       "app.put('/commandes/:orderId/annuler'",
-      "app.put('/commandes/:orderId/statut'"
+      "app.put('/commandes/:orderId/statut'",
+      'order_status_history'
     ]),
     'Order-service critical endpoints missing',
+    failures
+  );
+
+  const productApp = readFileSafe(path.join(root, 'services/product-service/src/app.js')) || '';
+  assert(
+    hasAllSnippets(productApp, [
+      "app.get('/wishlists/shared/:token'",
+      'wishlistSharedRateLimit',
+      'shareDisabledAt'
+    ]),
+    'Product-service wishlist hardening snippets missing',
     failures
   );
 
@@ -103,6 +123,13 @@ function main() {
       'CREATE TABLE IF NOT EXISTS security_events'
     ]),
     'PostgreSQL migration does not include required core tables',
+    failures
+  );
+
+  const histMigration = readFileSafe(path.join(root, 'db/postgres/migrations/007_order_status_history.sql')) || '';
+  assert(
+    hasAllSnippets(histMigration, ['order_status_history', 'CREATE TABLE IF NOT EXISTS order_status_history']),
+    '007_order_status_history migration missing or incomplete',
     failures
   );
 
