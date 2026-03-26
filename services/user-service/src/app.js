@@ -52,7 +52,7 @@ function createApp() {
   app.use(
     createInternalAuthMiddleware({
       secret: config.internalSharedSecret,
-      allowedServices: ['gateway', 'order-service']
+      allowedServices: ['gateway', 'order-service', 'admin-service']
     })
   );
 

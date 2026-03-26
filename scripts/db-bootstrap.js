@@ -20,7 +20,15 @@ require('dotenv').config({
 const { getPostgresPool, resetPostgresPool } = require('../shared/db/postgres');
 
 const MIGRATIONS_DIR = path.resolve(__dirname, '../db/postgres/migrations');
-const MIGRATION_ORDER = ['001_init.sql', '002_vendors.sql', '003_user_addresses.sql', '004_user_accounts_view_fix.sql'];
+const MIGRATION_ORDER = [
+  '001_init.sql',
+  '002_vendors.sql',
+  '003_user_addresses.sql',
+  '004_user_accounts_view_fix.sql',
+  '005_vendor_approval.sql',
+  '006_blocked_ips.sql',
+  '007_order_status_history.sql'
+];
 
 function createPool(overrides = {}) {
   return new Pool({

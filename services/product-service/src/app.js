@@ -3,10 +3,12 @@ const { ObjectId } = require('mongodb');
 
 const { requestIdMiddleware } = require('../../../shared/middleware/request-id');
 const { createInternalAuthMiddleware } = require('../../../shared/middleware/internal-auth');
+const { createRateLimitMiddleware } = require('../../../shared/middleware/rate-limit');
 const { errorHandler, notFoundHandler } = require('../../../shared/middleware/error-handler');
 const { getMongoDb } = require('../../../shared/db/mongo');
 const { randomId } = require('../../../shared/utils/ids');
 const { config } = require('./config');
+const { requireApprovedVendor } = require('./middlewares/approved-vendor');
 
 async function getProductsCollection() {
   const db = await getMongoDb();
@@ -15,6 +17,10 @@ async function getProductsCollection() {
 
 function normalizeProductId(id) {
   return ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
+}
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function requireVendorRole(req, res, next) {
@@ -70,6 +76,8 @@ function mapProduct(product) {
     gallery: product.gallery || [],
     galerie: product.gallery || [],
     vendorId: product.vendorId,
+    nomVendeur: product.nomVendeur || product.vendorName || '',
+    vendorName: product.nomVendeur || product.vendorName || '',
     status: product.status || 'published',
     rating: Number(product.rating || 0),
     note: Number(product.rating || 0),
@@ -107,6 +115,37 @@ function createApp() {
     });
   });
 
+  app.get('/health/seed', async (req, res) => {
+    try {
+      const collection = await getProductsCollection();
+      const count = await collection.countDocuments({});
+      if (count === 0) {
+        return res.status(503).json({
+          success: false,
+          error: {
+            code: 'PRODUCTS_NOT_SEEDED',
+            message: 'Products collection is empty. Run npm run db:bootstrap in Amaz_back.'
+          },
+          requestId: req.requestId
+        });
+      }
+      return res.json({
+        success: true,
+        data: { service: 'product-service', productsCount: count, seeded: true },
+        requestId: req.requestId
+      });
+    } catch (err) {
+      return res.status(503).json({
+        success: false,
+        error: {
+          code: 'SEED_CHECK_FAILED',
+          message: err?.message || 'Unable to check products collection'
+        },
+        requestId: req.requestId
+      });
+    }
+  });
+
   app.get('/', (req, res) => {
     res.json({
       success: true,
@@ -136,7 +175,7 @@ function createApp() {
     try {
       const collection = await getProductsCollection();
       const page = Math.max(Number(req.query.page || 1), 1);
-      const limit = Math.min(Math.max(Number(req.query.limit || 20), 1), 100);
+      const limit = Math.min(Math.max(Number(req.query.limit || 20), 1), 2000);
       const skip = (page - 1) * limit;
 
       const filter = {};
@@ -173,6 +212,15 @@ function createApp() {
       } else if (!statusFilter) {
         filter.status = { $ne: 'archived' };
       }
+      const authUserId = String(req.headers['x-auth-user-id'] || '').trim();
+      const authRole = String(req.headers['x-auth-role'] || '').trim();
+      const qVendorId = String(req.query.vendorId || '').trim();
+      const vendorListingSelf =
+        qVendorId &&
+        ((authRole === 'vendor' && authUserId === qVendorId) || authRole === 'admin');
+      if (!vendorListingSelf) {
+        filter.stock = { $gt: 0 };
+      }
       if (req.query.vendorId) {
         filter.vendorId = String(req.query.vendorId);
       }
@@ -197,6 +245,43 @@ function createApp() {
             limit,
             total
           }
+        },
+        requestId: req.requestId
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.get('/produits/suggest', async (req, res, next) => {
+    try {
+      const q = String(req.query.q || '').trim();
+      const limit = Math.min(Math.max(Number(req.query.limit || 8), 1), 20);
+      if (q.length < 2) {
+        return res.status(200).json({
+          success: true,
+          data: { items: [] },
+          requestId: req.requestId
+        });
+      }
+
+      const collection = await getProductsCollection();
+      const safe = escapeRegex(q);
+      const filter = {
+        status: { $ne: 'archived' },
+        stock: { $gt: 0 },
+        $or: [
+          { title: { $regex: safe, $options: 'i' } },
+          { category: { $regex: safe, $options: 'i' } }
+        ]
+      };
+
+      const items = await collection.find(filter).sort({ createdAt: -1 }).limit(limit).toArray();
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          items: items.map(mapProduct)
         },
         requestId: req.requestId
       });
@@ -232,7 +317,7 @@ function createApp() {
     }
   });
 
-  app.post('/produits', requireVendorRole, async (req, res, next) => {
+  app.post('/produits', requireVendorRole, requireApprovedVendor, async (req, res, next) => {
     try {
       const payload = req.body || {};
       const title = String(payload.title || payload.titre || '').trim();
@@ -423,7 +508,7 @@ function createApp() {
     }
   });
 
-  app.delete('/produits/:id', requireVendorRole, async (req, res, next) => {
+  app.delete('/produits/:id', requireVendorRole, requireApprovedVendor, async (req, res, next) => {
     try {
       const collection = await getProductsCollection();
       const id = req.params.id;
@@ -548,6 +633,250 @@ function createApp() {
         data: {
           productId: req.params.id,
           stock: updatedDoc.stock
+        },
+        requestId: req.requestId
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  const wishlistSharedRateLimit = createRateLimitMiddleware({ windowMs: 60_000, max: 120 });
+
+  let wishlistsIndexesEnsured = false;
+  async function getWishlistsCollection() {
+    const db = await getMongoDb();
+    const coll = db.collection('wishlists');
+    if (!wishlistsIndexesEnsured) {
+      wishlistsIndexesEnsured = true;
+      await coll.createIndex({ ownerUserId: 1 }, { unique: true, sparse: true });
+      await coll.createIndex({ shareToken: 1 }, { unique: true, sparse: true });
+    }
+    return coll;
+  }
+
+  async function ensureWishlist(ownerUserId) {
+    const coll = await getWishlistsCollection();
+    let doc = await coll.findOne({ ownerUserId });
+    if (!doc) {
+      const shareToken = randomId('wl');
+      const now = new Date();
+      doc = {
+        ownerUserId,
+        name: 'Ma liste',
+        items: [],
+        shareToken,
+        createdAt: now,
+        updatedAt: now
+      };
+      await coll.insertOne(doc);
+    }
+    return doc;
+  }
+
+  app.get('/wishlists/shared/:token', wishlistSharedRateLimit, async (req, res, next) => {
+    try {
+      const token = String(req.params.token || '').trim();
+      if (!token) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Token manquant' },
+          requestId: req.requestId
+        });
+      }
+      const coll = await getWishlistsCollection();
+      const doc = await coll.findOne({ shareToken: token });
+      if (!doc || doc.shareDisabledAt) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'WISHLIST_NOT_FOUND', message: 'Liste introuvable ou lien désactivé' },
+          requestId: req.requestId
+        });
+      }
+      return res.status(200).json({
+        success: true,
+        data: {
+          name: doc.name || 'Liste de souhaits',
+          productIds: (doc.items || []).map((i) => String(i.productId))
+        },
+        requestId: req.requestId
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.get('/wishlists/me', async (req, res, next) => {
+    try {
+      const ownerUserId = String(req.headers['x-auth-user-id'] || '').trim();
+      if (!ownerUserId) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'AUTH_REQUIRED', message: 'Authentification requise' },
+          requestId: req.requestId
+        });
+      }
+      const doc = await ensureWishlist(ownerUserId);
+      return res.status(200).json({
+        success: true,
+        data: {
+          name: doc.name,
+          shareToken: doc.shareToken,
+          shareDisabled: Boolean(doc.shareDisabledAt),
+          items: (doc.items || []).map((i) => ({
+            productId: String(i.productId),
+            addedAt: i.addedAt
+          }))
+        },
+        requestId: req.requestId
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.patch('/wishlists/me', async (req, res, next) => {
+    try {
+      const ownerUserId = String(req.headers['x-auth-user-id'] || '').trim();
+      if (!ownerUserId) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'AUTH_REQUIRED', message: 'Authentification requise' },
+          requestId: req.requestId
+        });
+      }
+      const addProductId = String(req.body?.addProductId || req.body?.productId || '').trim();
+      const removeProductId = String(req.body?.removeProductId || '').trim();
+      const hasShareToggle = Object.prototype.hasOwnProperty.call(req.body || {}, 'shareDisabled');
+      if (!addProductId && !removeProductId && !hasShareToggle) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'addProductId, removeProductId ou shareDisabled requis'
+          },
+          requestId: req.requestId
+        });
+      }
+      await ensureWishlist(ownerUserId);
+      const coll = await getWishlistsCollection();
+      const now = new Date();
+      let doc = await coll.findOne({ ownerUserId });
+
+      if (hasShareToggle) {
+        if (Boolean(req.body.shareDisabled)) {
+          await coll.updateOne(
+            { ownerUserId },
+            {
+              $set: {
+                shareDisabledAt: now,
+                shareDisabledReason:
+                  String(req.body.shareDisabledReason || '')
+                    .trim()
+                    .slice(0, 500) || null,
+                updatedAt: now
+              }
+            }
+          );
+        } else {
+          await coll.updateOne(
+            { ownerUserId },
+            { $unset: { shareDisabledAt: '', shareDisabledReason: '' }, $set: { updatedAt: now } }
+          );
+        }
+      }
+
+      if (!addProductId && !removeProductId) {
+        doc = await coll.findOne({ ownerUserId });
+        return res.status(200).json({
+          success: true,
+          data: {
+            name: doc.name,
+            shareToken: doc.shareToken,
+            shareDisabled: Boolean(doc.shareDisabledAt),
+            items: (doc.items || []).map((i) => ({
+              productId: String(i.productId),
+              addedAt: i.addedAt
+            }))
+          },
+          requestId: req.requestId
+        });
+      }
+
+      doc = await coll.findOne({ ownerUserId });
+      let items = Array.isArray(doc.items) ? [...doc.items] : [];
+
+      if (removeProductId) {
+        items = items.filter((i) => String(i.productId) !== removeProductId);
+      }
+
+      if (addProductId) {
+        const productsCol = await getProductsCollection();
+        const filter = normalizeProductId(addProductId);
+        const product = await productsCol.findOne(filter);
+        if (!product || String(product.status || 'published') === 'archived') {
+          return res.status(404).json({
+            success: false,
+            error: { code: 'PRODUCT_NOT_FOUND', message: 'Produit introuvable ou indisponible' },
+            requestId: req.requestId
+          });
+        }
+        const pid = String(product.id || product._id?.toString() || addProductId);
+        if (!items.some((i) => String(i.productId) === pid)) {
+          items.push({ productId: pid, addedAt: now });
+        }
+      }
+
+      await coll.updateOne({ ownerUserId }, { $set: { items, updatedAt: now } });
+      doc = await coll.findOne({ ownerUserId });
+      return res.status(200).json({
+        success: true,
+        data: {
+          name: doc.name,
+          shareToken: doc.shareToken,
+          shareDisabled: Boolean(doc.shareDisabledAt),
+          items: (doc.items || []).map((i) => ({
+            productId: String(i.productId),
+            addedAt: i.addedAt
+          }))
+        },
+        requestId: req.requestId
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.post('/wishlists/me/share', async (req, res, next) => {
+    try {
+      const ownerUserId = String(req.headers['x-auth-user-id'] || '').trim();
+      if (!ownerUserId) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'AUTH_REQUIRED', message: 'Authentification requise' },
+          requestId: req.requestId
+        });
+      }
+      const regenerate = Boolean(req.body?.regenerate);
+      const coll = await getWishlistsCollection();
+      let doc = await ensureWishlist(ownerUserId);
+      const now = new Date();
+      if (regenerate || !doc.shareToken) {
+        const newToken = randomId('wl');
+        await coll.updateOne(
+          { ownerUserId },
+          {
+            $set: { shareToken: newToken, updatedAt: now },
+            $unset: { shareDisabledAt: '', shareDisabledReason: '' }
+          }
+        );
+        doc = await coll.findOne({ ownerUserId });
+      }
+      return res.status(200).json({
+        success: true,
+        data: {
+          shareToken: doc.shareToken,
+          sharePath: `/liste/${doc.shareToken}`
         },
         requestId: req.requestId
       });

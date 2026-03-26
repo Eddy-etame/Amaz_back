@@ -1,5 +1,26 @@
 const { getPostgresPool } = require('../../../../shared/db/postgres');
 
+/**
+ * Load vendor approval when needed. Avoids referencing vendors.approval_status in the main query
+ * so login/register for normal users works even if migration 005 was never applied on this DB
+ * (e.g. host `db:bootstrap` hit a different Postgres than Docker).
+ */
+async function attachVendorApprovalStatus(row) {
+  if (!row || row.role !== 'vendor') return row;
+  const pool = getPostgresPool();
+  try {
+    const r = await pool.query(`SELECT approval_status FROM vendors WHERE id = $1 LIMIT 1`, [row.id]);
+    row.approval_status = r.rows[0]?.approval_status ?? null;
+  } catch (err) {
+    if (err.code === '42703') {
+      row.approval_status = 'pending';
+    } else {
+      throw err;
+    }
+  }
+  return row;
+}
+
 async function findUserByEmail(email) {
   const pool = getPostgresPool();
   const result = await pool.query(
@@ -14,7 +35,7 @@ async function findUserByEmail(email) {
         u.sms_verified,
         c.password_hash,
         c.password_salt
-      FROM user_accounts u
+      FROM users u
       JOIN user_credentials c ON c.user_id = u.id
       WHERE lower(u.email) = lower($1)
       LIMIT 1
@@ -22,7 +43,7 @@ async function findUserByEmail(email) {
     [email]
   );
 
-  return result.rows[0] || null;
+  return attachVendorApprovalStatus(result.rows[0] || null);
 }
 
 async function findUserByPhone(phone) {
@@ -39,7 +60,7 @@ async function findUserByPhone(phone) {
         u.sms_verified,
         c.password_hash,
         c.password_salt
-      FROM user_accounts u
+      FROM users u
       JOIN user_credentials c ON c.user_id = u.id
       WHERE u.phone = $1
       LIMIT 1
@@ -47,7 +68,7 @@ async function findUserByPhone(phone) {
     [phone]
   );
 
-  return result.rows[0] || null;
+  return attachVendorApprovalStatus(result.rows[0] || null);
 }
 
 async function findUserById(userId) {
@@ -55,20 +76,20 @@ async function findUserById(userId) {
   const result = await pool.query(
     `
       SELECT
-        id,
-        email,
-        phone,
-        username,
-        role,
-        email_verified,
-        sms_verified
-      FROM user_accounts
-      WHERE id = $1
+        u.id,
+        u.email,
+        u.phone,
+        u.username,
+        u.role,
+        u.email_verified,
+        u.sms_verified
+      FROM users u
+      WHERE u.id = $1
       LIMIT 1
     `,
     [userId]
   );
-  return result.rows[0] || null;
+  return attachVendorApprovalStatus(result.rows[0] || null);
 }
 
 async function createUser({ userId, email, phone, username, role, passwordHash, passwordSalt }) {
@@ -118,8 +139,8 @@ async function createVendor({
     await client.query('BEGIN');
     await client.query(
       `
-        INSERT INTO vendors (id, email, phone, username, role, email_verified, sms_verified, business_name, siret, address, tax_id, iban)
-        VALUES ($1, lower($2), $3, $4, 'vendor', false, false, $5, $6, $7, $8, $9)
+        INSERT INTO vendors (id, email, phone, username, role, email_verified, sms_verified, business_name, siret, address, tax_id, iban, approval_status)
+        VALUES ($1, lower($2), $3, $4, 'vendor', false, false, $5, $6, $7, $8, $9, 'pending')
       `,
       [userId, email, phone || null, username || null, businessName || null, siret || null, address || null, taxId || null, iban || null]
     );
@@ -182,6 +203,21 @@ async function markVerification({ userId, channel }) {
   await pool.query(`UPDATE vendors SET email_verified = true, updated_at = NOW() WHERE id = $1`, [userId]);
 }
 
+async function updateVendorApproval({ vendorId, approvalStatus, approvedBy }) {
+  const pool = getPostgresPool();
+  await pool.query(
+    `
+      UPDATE vendors
+      SET approval_status = $2,
+          approved_at = CASE WHEN $2 = 'approved' THEN NOW() ELSE approved_at END,
+          approved_by = CASE WHEN $2 = 'approved' THEN $3 ELSE NULL END,
+          updated_at = NOW()
+      WHERE id = $1
+    `,
+    [vendorId, approvalStatus, approvedBy || null]
+  );
+}
+
 async function insertSecurityEvent({
   userId = null,
   eventType,
@@ -218,6 +254,7 @@ module.exports = {
   createVendor,
   updateUserProfile,
   updatePassword,
+  updateVendorApproval,
   markVerification,
   insertSecurityEvent
 };

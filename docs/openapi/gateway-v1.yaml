@@ -1,0 +1,152 @@
+openapi: 3.0.3
+info:
+  title: Amaz Gateway API
+  version: 1.0.0
+  description: |
+    Public API under `/api/v1`. Clients must send PoW headers (`X-PoW-*`, `X-Client-Fingerprint`)
+    on mutating and most GET routes except as documented. See gateway and frontend PoW implementation.
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local gateway
+
+tags:
+  - name: Auth
+  - name: Commandes
+  - name: Wishlists
+  - name: Produits
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                username: { type: string }
+      responses:
+        '201':
+          description: Created
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Tokens returned in data
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: OK
+
+  /commandes:
+    get:
+      tags: [Commandes]
+      summary: List orders for current user (or vendor/admin scope)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Paginated list
+  /commandes/{orderId}:
+    get:
+      tags: [Commandes]
+      summary: Order detail including optional statusHistory (last 20 events)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+
+  /wishlists/me:
+    get:
+      tags: [Wishlists]
+      summary: Current user's wishlist (lazy-created)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: name, shareToken, shareDisabled, items[]
+    patch:
+      tags: [Wishlists]
+      summary: Add/remove product or toggle share link
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                addProductId: { type: string }
+                removeProductId: { type: string }
+                shareDisabled: { type: boolean }
+                shareDisabledReason: { type: string }
+      responses:
+        '200':
+          description: Updated wishlist
+  /wishlists/me/share:
+    post:
+      tags: [Wishlists]
+      summary: Ensure or regenerate share token
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                regenerate: { type: boolean }
+      responses:
+        '200':
+          description: shareToken and sharePath
+  /wishlists/shared/{token}:
+    get:
+      tags: [Wishlists]
+      summary: Public read-only shared list (rate-limited; 404 if revoked)
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: name, productIds
+        '404':
+          description: Not found or link disabled
+
+  /produits:
+    get:
+      tags: [Produits]
+      summary: Search/list products
+      responses:
+        '200':
+          description: OK
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: HMAC-access-token

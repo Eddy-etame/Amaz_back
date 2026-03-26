@@ -23,40 +23,30 @@ function createPowMiddleware(options = {}) {
     const proof = (req.headers['x-pow-proof'] || '').toString().trim();
     const timestamp = Number(timestampRaw);
 
-    if (!Number.isFinite(timestamp) || !nonce || !proof) {
-      return res.status(400).json({
+    // Contrat API v1.2 : 403 « Preuve invalide » (messages génériques, pas de fuite d’info)
+    const powForbidden = (code) =>
+      res.status(403).json({
         success: false,
         error: {
-          code: 'POW_REQUIRED',
-          message: 'Preuve de travail invalide ou absente'
+          code,
+          message: 'Preuve invalide'
         },
         requestId: req.requestId
       });
+
+    if (!Number.isFinite(timestamp) || !nonce || !proof) {
+      return powForbidden('POW_REQUIRED');
     }
 
     const now = Date.now();
     if (Math.abs(now - timestamp) > windowMs) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'POW_EXPIRED',
-          message: 'Preuve de travail expirée'
-        },
-        requestId: req.requestId
-      });
+      return powForbidden('POW_EXPIRED');
     }
 
     const fingerprint = buildFingerprint(req);
     const replayKey = `${timestamp}:${nonce}:${fingerprint}:${req.method.toUpperCase()}:${req.originalUrl}`;
     if (nonceStore.has(replayKey)) {
-      return res.status(409).json({
-        success: false,
-        error: {
-          code: 'POW_REPLAY',
-          message: 'Nonce déjà utilisé'
-        },
-        requestId: req.requestId
-      });
+      return powForbidden('POW_REPLAY');
     }
 
     const valid = verifyPow({
@@ -70,14 +60,7 @@ function createPowMiddleware(options = {}) {
     });
 
     if (!valid) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'POW_INVALID',
-          message: 'Preuve de travail invalide'
-        },
-        requestId: req.requestId
-      });
+      return powForbidden('POW_INVALID');
     }
 
     nonceStore.set(replayKey, now + windowMs);

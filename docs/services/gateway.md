@@ -14,6 +14,7 @@
 | GATEWAY_PORT | No | 3000 | HTTP port |
 | GATEWAY_HOST | No | 0.0.0.0 | Bind address |
 | INTERNAL_SHARED_SECRET | Yes | - | Shared secret for signing internal requests |
+| INTERNAL_TRUST_MODE | No | `shared_secret` | **Développement :** `shared_secret` (défaut) — le proxy signe avec `INTERNAL_SHARED_SECRET`. **Cible production (contrat v1.2) :** `mtls` — confiance mutuelle TLS entre Gateway et microservices ; les en-têtes `X-User-Id` / `X-User-Role` (ou équivalents `x-auth-user-id` / `x-auth-role` côté proxy actuel) complètent l’identité après terminaison mTLS. La valeur `mtls` est **documentaire** pour l’instant : l’implémentation reste `shared_secret` tant que l’infra réseau (Proxmox/VLAN/certificats) n’est pas branchée. |
 | POW_DIFFICULTY | No | 3 | Leading zeros required in PoW hash |
 | POW_WINDOW_MS | No | 120000 | PoW validity window (ms) |
 | RATE_LIMIT_WINDOW_MS | No | 60000 | Rate limit window (ms) |
@@ -39,10 +40,20 @@
 |------|------------|---------------|
 | /api/v1/auth/* | user-service | Public paths: login, register, signup, verification, password reset, refresh |
 | /api/v1/addresses | user-service | Yes |
-| /api/v1/produits, /api/v1/products | product-service | GET public; POST/PUT/DELETE yes |
+| /api/v1/produits, /api/v1/products | product-service | **GET :** PoW + **auth optionnelle** (Bearer → en-têtes `x-auth-*` vers le service). **Mutation :** Bearer obligatoire. |
 | /api/v1/commandes, /api/v1/orders | order-service | Yes |
 | /api/v1/messages | messaging-service | Yes |
-| /api/v1/ai, /api/v1/bot | ai-service | Yes |
+| /api/v1/ai/* | ai-service | Yes (Bearer) |
+| /api/v1/bot/* | ai-service | **POST /api/v1/bot/auth :** PoW uniquement (contrat v1.2). Autres routes bot : Bearer requis. |
+
+### Erreurs PoW (contrat v1.2)
+
+Toutes les réponses d’échec de preuve de travail côté gateway utilisent le **HTTP 403** et le message générique **« Preuve invalide »** (code métier `POW_*` conservé dans le corps JSON pour le diagnostic, sans fuite d’information sur la cause exacte).
+
+### Appels internes Gateway → microservices
+
+- **Aujourd’hui :** requêtes HTTP signées (`x-internal-signature`, etc.) avec `INTERNAL_SHARED_SECRET`.
+- **Cible documentée :** mTLS entre nœuds + propagation d’identité ; variable `INTERNAL_TRUST_MODE=mtls` décrit l’intention ; pas de suppression du mode `shared_secret` sans validation ops.
 
 ## Allowed Callers
 
