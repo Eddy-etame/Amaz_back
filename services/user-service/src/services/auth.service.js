@@ -1656,10 +1656,20 @@ async function authenticateAdmin({ email, password }) {
   };
 }
 
+/** Resolve Postgres user id for an admin email (used by admin-service internal calls). */
+async function resolveAdminUserIdFromEmail(email) {
+  const e = String(email || '').trim();
+  if (!e) return null;
+  const user = await findUserByEmail(e);
+  if (!user || user.role !== 'admin') return null;
+  return user.id;
+}
+
 module.exports = {
   register,
   login,
   authenticateAdmin,
+  resolveAdminUserIdFromEmail,
   me,
   updateMe,
   approveVendor,

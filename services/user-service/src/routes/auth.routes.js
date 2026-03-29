@@ -6,6 +6,7 @@ const {
   register,
   login,
   authenticateAdmin,
+  resolveAdminUserIdFromEmail,
   me,
   updateMe,
   approveVendor,
@@ -472,6 +473,86 @@ function createAuthRouter() {
       const result = await removeBlockedIpAdmin({
         ipAddress: ip,
         adminUserId: req.auth.userId,
+        ctx
+      });
+      res.status(result.status).json({
+        ...result.body,
+        requestId: req.requestId
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.patch('/internal/admin/vendors/:vendorId/approve', async (req, res, next) => {
+    try {
+      if (req.internalCaller !== 'admin-service') {
+        return res.status(403).json({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Réservé au service admin-service' },
+          requestId: req.requestId
+        });
+      }
+      const actorEmail = String(req.body?.actorEmail || '').trim();
+      if (!actorEmail) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'actorEmail requis' },
+          requestId: req.requestId
+        });
+      }
+      const adminUserId = await resolveAdminUserIdFromEmail(actorEmail);
+      if (!adminUserId) {
+        return res.status(403).json({
+          success: false,
+          error: { code: 'ADMIN_ACTOR_INVALID', message: 'Email admin invalide ou rôle non autorisé' },
+          requestId: req.requestId
+        });
+      }
+      const ctx = getRequestContext(req);
+      const result = await approveVendor({
+        vendorId: String(req.params.vendorId || '').trim(),
+        adminUserId,
+        ctx
+      });
+      res.status(result.status).json({
+        ...result.body,
+        requestId: req.requestId
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.patch('/internal/admin/vendors/:vendorId/reject', async (req, res, next) => {
+    try {
+      if (req.internalCaller !== 'admin-service') {
+        return res.status(403).json({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Réservé au service admin-service' },
+          requestId: req.requestId
+        });
+      }
+      const actorEmail = String(req.body?.actorEmail || '').trim();
+      if (!actorEmail) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'actorEmail requis' },
+          requestId: req.requestId
+        });
+      }
+      const adminUserId = await resolveAdminUserIdFromEmail(actorEmail);
+      if (!adminUserId) {
+        return res.status(403).json({
+          success: false,
+          error: { code: 'ADMIN_ACTOR_INVALID', message: 'Email admin invalide ou rôle non autorisé' },
+          requestId: req.requestId
+        });
+      }
+      const ctx = getRequestContext(req);
+      const result = await rejectVendor({
+        vendorId: String(req.params.vendorId || '').trim(),
+        adminUserId,
         ctx
       });
       res.status(result.status).json({
