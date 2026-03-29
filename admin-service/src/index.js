@@ -2,6 +2,7 @@ import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import { createRequire } from 'module';
 
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
@@ -13,6 +14,8 @@ import AdminJSExpress from '@adminjs/express';
 import session from 'express-session';
 import Connect from 'connect-pg-simple';
 import { Adapter, Database, Resource } from '@adminjs/sql';
+
+const { buildSqlResources } = require('./admin-resources.cjs');
 
 const { internalFetch } = require('../../shared/utils/internal-http.js');
 const { randomId } = require('../../shared/utils/ids.js');
@@ -29,6 +32,52 @@ const PG_DATABASE = process.env.PG_DATABASE || process.env.PG_DB || 'amaz_db';
 const connectionString =
   process.env.DATABASE_URL ||
   `postgres://${PG_USER}:${PG_PASSWORD}@${PG_HOST}:${PG_PORT}/${PG_DATABASE}`;
+
+async function buildMongoAdminResources(AdminJS) {
+  const uri = process.env.MONGO_URI || '';
+  if (!uri) return [];
+  try {
+    const mongoose = (await import('mongoose')).default;
+    const { Database, Resource } = await import('@adminjs/mongoose');
+    AdminJS.registerAdapter({ Database, Resource });
+
+    if (mongoose.connection.readyState === 0) {
+      await mongoose.connect(uri, {
+        dbName: process.env.MONGO_DB_NAME || undefined
+      });
+    }
+
+    const productSchema = new mongoose.Schema(
+      {},
+      {
+        strict: false,
+        collection: 'products'
+      }
+    );
+    const Product =
+      mongoose.models.AmazAdminCatalogProduct ||
+      mongoose.model('AmazAdminCatalogProduct', productSchema);
+
+    return [
+      {
+        resource: Product,
+        options: {
+          id: 'mongo_products',
+          navigation: { name: 'Catalog (Mongo, read-only)' },
+          actions: {
+            new: { isAccessible: () => false },
+            edit: { isAccessible: () => false },
+            delete: { isAccessible: () => false },
+            bulkDelete: { isAccessible: () => false }
+          }
+        }
+      }
+    ];
+  } catch (e) {
+    console.warn('Admin Mongo catalog skipped:', e.message);
+    return [];
+  }
+}
 
 async function authenticate(email, password) {
   if (!INTERNAL_SHARED_SECRET) {
@@ -59,17 +108,16 @@ const start = async () => {
     database: PG_DATABASE
   }).init();
 
+  const sqlResources = buildSqlResources(db, {
+    USER_SERVICE_URL,
+    INTERNAL_SHARED_SECRET
+  });
+
+  const mongoResources = await buildMongoAdminResources(AdminJS);
+
   const admin = new AdminJS({
     rootPath: '/admin',
-    resources: [
-      { resource: db.table('users'), options: { navigation: { name: 'Users & Vendors' } } },
-      { resource: db.table('vendors'), options: { navigation: { name: 'Users & Vendors' } } },
-      { resource: db.table('orders'), options: { navigation: { name: 'Orders' } } },
-      { resource: db.table('order_items'), options: { navigation: { name: 'Orders' } } },
-      { resource: db.table('sessions'), options: { navigation: { name: 'Security' } } },
-      { resource: db.table('security_events'), options: { navigation: { name: 'Security' } } },
-      { resource: db.table('blocked_ips'), options: { navigation: { name: 'Security' } } }
-    ]
+    resources: [...sqlResources, ...mongoResources]
   });
 
   if (process.env.NODE_ENV === 'development') {

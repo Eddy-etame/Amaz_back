@@ -1,5 +1,7 @@
 # QA Lab (banc de test Angular)
 
+**Dépôt :** [github.com/Eddy-etame/Rep_Amazon-qa-lab](https://github.com/Eddy-etame/Rep_Amazon-qa-lab) (projet versionné séparément du backend).
+
 Projet Angular dans `qa-lab/`, sur un port de dev distinct (souvent 4202). Ce n’est pas une app « grand public » : c’est un **laboratoire** pour appeler l’API à travers la gateway, reproduire des scénarios, et montrer au correcteur qu’on sait isoler un bug sans passer par tout le parcours UI.
 
 ## Intérêt pédagogique
