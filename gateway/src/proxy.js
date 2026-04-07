@@ -50,6 +50,19 @@ function buildSuccessPayload({ payload, requestId }) {
   };
 }
 
+/** Upstream apps mount /commandes, not /api/v1/commandes — strip accidental double prefix. */
+function normalizeMicroserviceTargetPath(targetPath) {
+  const raw = String(targetPath || '/');
+  const q = raw.indexOf('?');
+  const pathOnly = (q >= 0 ? raw.slice(0, q) : raw) || '/';
+  const query = q >= 0 ? raw.slice(q + 1) : '';
+  let p = pathOnly;
+  if (p.startsWith('/api/v1')) {
+    p = p.slice('/api/v1'.length) || '/';
+  }
+  return query ? `${p}?${query}` : p;
+}
+
 async function forwardToService({
   req,
   res,
@@ -59,7 +72,10 @@ async function forwardToService({
   callerService = 'gateway',
   timeoutMs = 10000
 }) {
-  const finalPath = String(targetPath || '/');
+  const base = String(serviceBaseUrl || '')
+    .replace(/\/+$/, '')
+    .replace(/\/api\/v1$/i, '');
+  const finalPath = normalizeMicroserviceTargetPath(targetPath);
   const timestamp = Date.now();
   const nonce = randomId('nonce');
   const signature = signInternalRequest({
@@ -72,7 +88,7 @@ async function forwardToService({
     body: req.body
   });
 
-  const finalUrl = `${serviceBaseUrl}${finalPath}`;
+  const finalUrl = `${base}${finalPath}`;
   const abortController = new AbortController();
   const timer = setTimeout(() => {
     abortController.abort();

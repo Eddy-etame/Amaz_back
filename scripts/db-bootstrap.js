@@ -27,7 +27,8 @@ const MIGRATION_ORDER = [
   '004_user_accounts_view_fix.sql',
   '005_vendor_approval.sql',
   '006_blocked_ips.sql',
-  '007_order_status_history.sql'
+  '007_order_status_history.sql',
+  '008_vendors_primary_key.sql'
 ];
 
 function createPool(overrides = {}) {
