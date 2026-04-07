@@ -134,6 +134,19 @@ const start = async () => {
   const app = express();
   app.disable('x-powered-by');
 
+  // Allow the Angular admin app (another origin) to poll GET /health from the browser.
+  app.use((req, res, next) => {
+    if (req.path === '/health' || req.path.startsWith('/health')) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    }
+    if (req.method === 'OPTIONS' && req.path === '/health') {
+      return res.status(204).end();
+    }
+    return next();
+  });
+
   const adminRouter = AdminJSExpress.buildAuthenticatedRouter(
     admin,
     {
@@ -164,8 +177,20 @@ const start = async () => {
     res.json({ success: true, data: { service: 'admin-service', status: 'ok' } });
   });
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Admin panel at http://localhost:${PORT}${admin.options.rootPath}`);
+  });
+  server.on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE') {
+      console.error(
+        `Port ${PORT} is already in use (another admin-service or app). ` +
+          `Stop that process, or run with ADMIN_SERVICE_PORT=3011 npm run start:admin. ` +
+          `Windows: netstat -ano | findstr :${PORT} then taskkill /PID <pid> /F`
+      );
+    } else {
+      console.error(err);
+    }
+    process.exit(1);
   });
 };
 

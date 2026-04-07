@@ -190,7 +190,7 @@ async function fetchProduct(productId, requestId) {
 
   if (!response.ok || !response.payload?.data) {
     throw {
-      status: 404,
+      status: 422,
       code: 'PRODUCT_NOT_FOUND',
       publicMessage: `Produit introuvable: ${productId}`
     };
@@ -271,7 +271,7 @@ function createApp() {
     })
   );
 
-  app.post('/commandes', async (req, res, next) => {
+  const handlePostCommande = async (req, res, next) => {
     const userId = String(req.headers['x-auth-user-id'] || '').trim();
     if (!userId) {
       return res.status(401).json({
@@ -459,7 +459,10 @@ function createApp() {
       );
       return next(error);
     }
-  });
+  };
+
+  app.post('/commandes', handlePostCommande);
+  app.post('/api/v1/commandes', handlePostCommande);
 
   app.get('/commandes', async (req, res, next) => {
     try {

@@ -122,6 +122,13 @@ npm run db:bootstrap:docker
 
 (requires stack up: `docker compose -f docker-compose.full.yml up -d`; uses the `bootstrap` service under `--profile tools`.)
 
+**Multi-frontend dev (ports 4200 / 4201 / 4203) and empty catalog:**
+
+1. After `docker compose -f docker-compose.full.yml up -d`, run **`npm run db:bootstrap:docker`** so **Mongo** (products) and Postgres match the containers.
+2. **Rebuild or restart the gateway** after changing `CORS_ALLOWED_ORIGINS` or [`gateway/src/config.js`](gateway/src/config.js) dev defaults.
+3. Use **one** hostname family in the browser for all apps (`localhost` *or* `127.0.0.1`); CORS lists both in dev.
+4. Verify API + PoW: **`npm run test:gateway-suite`** (expects `GET /api/v1/produits` with items).
+
 **Manual steps:**
 
 - PostgreSQL: run all files in `db/postgres/migrations/` in lexical order (or use `npm run db:bootstrap`)
