@@ -1,11 +1,11 @@
-# User Service
+﻿# User Service
 
 **Port:** 3001  
 **Purpose:** Authentication, user management, addresses, verification (OTP), password reset, and email notifications.
 
 ## Dependencies
 
-- PostgreSQL (users, user_credentials, sessions, otp_requests, security_events, user_addresses)
+- MySQL (users, user_credentials, sessions, otp_requests, security_events, user_addresses)
 - Pepper service (for password hashing)
 
 ## Environment Variables
@@ -16,7 +16,7 @@
 | INTERNAL_SHARED_SECRET | Yes | - | Shared secret for internal auth |
 | ACCESS_HMAC_SECRET | Yes | - | HMAC for access tokens |
 | REFRESH_HMAC_SECRET | Yes | - | HMAC for refresh tokens |
-| PG_HOST, PG_PORT, PG_USER, PG_PASSWORD, PG_DATABASE | Yes | - | PostgreSQL connection |
+| MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE | Yes | - | MySQL connection |
 | PEPPER_SERVICE_URL | No | http://localhost:3006 | Pepper service URL |
 | PEPPER_CLIENT_SECRET | No | - | Dev fallback when Pepper is down |
 | SESSION_TTL_MINUTES | No | 60 | Access token TTL |
@@ -50,7 +50,7 @@
 - gateway
 - order-service
 
-## Data Model (PostgreSQL)
+## Data Model (MySQL)
 
 - users, vendors (inherits users)
 - user_credentials (password_hash, password_salt)
@@ -58,3 +58,4 @@
 - otp_requests, otp_attempts, password_reset_requests
 - user_addresses
 - security_events
+

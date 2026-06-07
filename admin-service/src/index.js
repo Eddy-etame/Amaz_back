@@ -12,7 +12,6 @@ import express from 'express';
 import AdminJS from 'adminjs';
 import AdminJSExpress from '@adminjs/express';
 import session from 'express-session';
-import Connect from 'connect-pg-simple';
 import { Adapter, Database, Resource } from '@adminjs/sql';
 
 const { buildSqlResources } = require('./admin-resources.cjs');
@@ -23,15 +22,16 @@ const { randomId } = require('../../shared/utils/ids.js');
 const PORT = Number(process.env.ADMIN_SERVICE_PORT || 3010);
 const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3001';
 const INTERNAL_SHARED_SECRET = process.env.INTERNAL_SHARED_SECRET || '';
-const PG_HOST = process.env.PG_HOST || 'localhost';
-const PG_PORT = Number(process.env.PG_PORT || 5432);
-const PG_USER = process.env.PG_USER || 'amaz';
-const PG_PASSWORD = process.env.PG_PASSWORD || '';
-const PG_DATABASE = process.env.PG_DATABASE || process.env.PG_DB || 'amaz_db';
+const MYSQL_HOST = process.env.MYSQL_HOST || process.env.PG_HOST || 'localhost';
+const MYSQL_PORT = Number(process.env.MYSQL_PORT || process.env.PG_PORT || 3306);
+const MYSQL_USER = process.env.MYSQL_USER || process.env.PG_USER || 'amaz';
+const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || process.env.PG_PASSWORD || '';
+const MYSQL_DATABASE =
+  process.env.MYSQL_DATABASE || process.env.MYSQL_DB || process.env.PG_DATABASE || process.env.PG_DB || 'amaz_db';
 
 const connectionString =
   process.env.DATABASE_URL ||
-  `postgres://${PG_USER}:${PG_PASSWORD}@${PG_HOST}:${PG_PORT}/${PG_DATABASE}`;
+  `mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_DATABASE}`;
 
 async function buildMongoAdminResources(AdminJS) {
   const uri = process.env.MONGO_URI || '';
@@ -103,9 +103,9 @@ async function authenticate(email, password) {
 const start = async () => {
   AdminJS.registerAdapter({ Database, Resource });
 
-  const db = await new Adapter('postgresql', {
+  const db = await new Adapter('mysql', {
     connectionString,
-    database: PG_DATABASE
+    database: MYSQL_DATABASE
   }).init();
 
   const sqlResources = buildSqlResources(db, {
@@ -123,13 +123,6 @@ const start = async () => {
   if (process.env.NODE_ENV === 'development') {
     admin.watch();
   }
-
-  const ConnectSession = Connect(session);
-  const sessionStore = new ConnectSession({
-    conObject: { connectionString },
-    tableName: 'admin_session',
-    createTableIfMissing: true
-  });
 
   const app = express();
   app.disable('x-powered-by');
@@ -159,7 +152,6 @@ const start = async () => {
     },
     null,
     {
-      store: sessionStore,
       resave: true,
       saveUninitialized: true,
       secret: process.env.ADMIN_SESSION_SECRET || 'change-me-in-production-admin-session',

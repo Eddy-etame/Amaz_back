@@ -1,4 +1,4 @@
-const { getPostgresPool } = require('../../../../shared/db/postgres');
+const { getMysqlPool } = require('../../../../shared/db/mysql');
 
 function mapAddressRow(row) {
   return {
@@ -17,259 +17,195 @@ function mapAddressRow(row) {
 }
 
 async function listUserAddresses(userId) {
-  const pool = getPostgresPool();
-  const result = await pool.query(
+  const pool = getMysqlPool();
+  const [rows] = await pool.query(
     `
       SELECT *
       FROM user_addresses
-      WHERE user_id = $1
+      WHERE user_id = ?
       ORDER BY is_default DESC, created_at ASC
     `,
     [userId]
   );
-
-  return result.rows.map(mapAddressRow);
+  return rows.map(mapAddressRow);
 }
 
 async function createUserAddress({
-  addressId,
-  userId,
-  label,
-  street,
-  city,
-  postalCode,
-  country,
-  phone,
-  isDefault
+  addressId, userId, label, street,
+  city, postalCode, country, phone, isDefault
 }) {
-  const pool = getPostgresPool();
-  const client = await pool.connect();
+  const pool = getMysqlPool();
+  const connection = await pool.getConnection();
 
   try {
-    await client.query('BEGIN');
-    const countResult = await client.query(
-      `
-        SELECT COUNT(*)::int AS count
-        FROM user_addresses
-        WHERE user_id = $1
-      `,
+    await connection.beginTransaction();
+
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS count FROM user_addresses WHERE user_id = ?`,
       [userId]
     );
 
-    const shouldBeDefault = Boolean(isDefault) || Number(countResult.rows[0]?.count || 0) === 0;
+    const shouldBeDefault = Boolean(isDefault) || Number(countRows[0]?.count || 0) === 0;
+
     if (shouldBeDefault) {
-      await client.query(
-        `
-          UPDATE user_addresses
-          SET is_default = false,
-              updated_at = NOW()
-          WHERE user_id = $1
-        `,
+      await connection.execute(
+        `UPDATE user_addresses SET is_default = false, updated_at = NOW() WHERE user_id = ?`,
         [userId]
       );
     }
 
-    const inserted = await client.query(
+    await connection.execute(
       `
         INSERT INTO user_addresses (
-          id,
-          user_id,
-          label,
-          street,
-          city,
-          postal_code,
-          country,
-          phone,
-          is_default
+          id, user_id, label, street, city,
+          postal_code, country, phone, is_default
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        RETURNING *
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      [
-        addressId,
-        userId,
-        label,
-        street,
-        city,
-        postalCode || null,
-        country,
-        phone || null,
-        shouldBeDefault
-      ]
+      [addressId, userId, label, street, city,
+        postalCode || null, country, phone || null, shouldBeDefault]
     );
 
-    await client.query('COMMIT');
-    return mapAddressRow(inserted.rows[0]);
+    const [inserted] = await connection.execute(
+      `SELECT * FROM user_addresses WHERE id = ? LIMIT 1`,
+      [addressId]
+    );
+
+    await connection.commit();
+    return mapAddressRow(inserted[0]);
   } catch (error) {
-    await client.query('ROLLBACK');
+    await connection.rollback();
     throw error;
   } finally {
-    client.release();
+    connection.release();
   }
 }
 
 async function updateUserAddress({
-  userId,
-  addressId,
-  label,
-  street,
-  city,
-  postalCode,
-  country,
-  phone,
-  isDefault
+  userId, addressId, label, street,
+  city, postalCode, country, phone, isDefault
 }) {
-  const pool = getPostgresPool();
-  const client = await pool.connect();
+  const pool = getMysqlPool();
+  const connection = await pool.getConnection();
 
   try {
-    await client.query('BEGIN');
+    await connection.beginTransaction();
+
     if (Boolean(isDefault)) {
-      await client.query(
-        `
-          UPDATE user_addresses
-          SET is_default = false,
-              updated_at = NOW()
-          WHERE user_id = $1
-        `,
+      await connection.execute(
+        `UPDATE user_addresses SET is_default = false, updated_at = NOW() WHERE user_id = ?`,
         [userId]
       );
     }
 
-    const updated = await client.query(
+    await connection.execute(
       `
         UPDATE user_addresses
-        SET label = $3,
-            street = $4,
-            city = $5,
-            postal_code = $6,
-            country = $7,
-            phone = $8,
-            is_default = CASE
-              WHEN $9::boolean THEN true
-              ELSE is_default
-            END,
+        SET label = ?,
+            street = ?,
+            city = ?,
+            postal_code = ?,
+            country = ?,
+            phone = ?,
+            is_default = CASE WHEN ? THEN true ELSE is_default END,
             updated_at = NOW()
-        WHERE id = $1
-          AND user_id = $2
-        RETURNING *
+        WHERE id = ?
+          AND user_id = ?
       `,
-      [
-        addressId,
-        userId,
-        label,
-        street,
-        city,
-        postalCode || null,
-        country,
-        phone || null,
-        Boolean(isDefault)
-      ]
+      [label, street, city, postalCode || null, country,
+        phone || null, Boolean(isDefault), addressId, userId]
     );
 
-    await client.query('COMMIT');
-    return updated.rows[0] ? mapAddressRow(updated.rows[0]) : null;
+    const [updated] = await connection.execute(
+      `SELECT * FROM user_addresses WHERE id = ? AND user_id = ? LIMIT 1`,
+      [addressId, userId]
+    );
+
+    await connection.commit();
+    return updated[0] ? mapAddressRow(updated[0]) : null;
   } catch (error) {
-    await client.query('ROLLBACK');
+    await connection.rollback();
     throw error;
   } finally {
-    client.release();
+    connection.release();
   }
 }
 
 async function setDefaultUserAddress({ userId, addressId }) {
-  const pool = getPostgresPool();
-  const client = await pool.connect();
+  const pool = getMysqlPool();
+  const connection = await pool.getConnection();
 
   try {
-    await client.query('BEGIN');
-    await client.query(
-      `
-        UPDATE user_addresses
-        SET is_default = false,
-            updated_at = NOW()
-        WHERE user_id = $1
-      `,
+    await connection.beginTransaction();
+
+    await connection.execute(
+      `UPDATE user_addresses SET is_default = false, updated_at = NOW() WHERE user_id = ?`,
       [userId]
     );
 
-    const updated = await client.query(
-      `
-        UPDATE user_addresses
-        SET is_default = true,
-            updated_at = NOW()
-        WHERE id = $1
-          AND user_id = $2
-        RETURNING *
-      `,
+    await connection.execute(
+      `UPDATE user_addresses SET is_default = true, updated_at = NOW() WHERE id = ? AND user_id = ?`,
       [addressId, userId]
     );
 
-    await client.query('COMMIT');
-    return updated.rows[0] ? mapAddressRow(updated.rows[0]) : null;
+    const [updated] = await connection.execute(
+      `SELECT * FROM user_addresses WHERE id = ? AND user_id = ? LIMIT 1`,
+      [addressId, userId]
+    );
+
+    await connection.commit();
+    return updated[0] ? mapAddressRow(updated[0]) : null;
   } catch (error) {
-    await client.query('ROLLBACK');
+    await connection.rollback();
     throw error;
   } finally {
-    client.release();
+    connection.release();
   }
 }
 
 async function deleteUserAddress({ userId, addressId }) {
-  const pool = getPostgresPool();
-  const client = await pool.connect();
+  const pool = getMysqlPool();
+  const connection = await pool.getConnection();
 
   try {
-    await client.query('BEGIN');
+    await connection.beginTransaction();
 
-    const deleted = await client.query(
-      `
-        DELETE FROM user_addresses
-        WHERE id = $1
-          AND user_id = $2
-        RETURNING *
-      `,
+    const [toDelete] = await connection.execute(
+      `SELECT * FROM user_addresses WHERE id = ? AND user_id = ? LIMIT 1`,
       [addressId, userId]
     );
 
-    const deletedRow = deleted.rows[0];
-    if (!deletedRow) {
-      await client.query('ROLLBACK');
+    if (!toDelete[0]) {
+      await connection.rollback();
       return false;
     }
 
-    if (deletedRow.is_default) {
-      const nextAddress = await client.query(
-        `
-          SELECT id
-          FROM user_addresses
-          WHERE user_id = $1
-          ORDER BY created_at ASC
-          LIMIT 1
-        `,
+    await connection.execute(
+      `DELETE FROM user_addresses WHERE id = ? AND user_id = ?`,
+      [addressId, userId]
+    );
+
+    if (toDelete[0].is_default) {
+      const [nextAddress] = await connection.execute(
+        `SELECT id FROM user_addresses WHERE user_id = ? ORDER BY created_at ASC LIMIT 1`,
         [userId]
       );
 
-      if (nextAddress.rows[0]?.id) {
-        await client.query(
-          `
-            UPDATE user_addresses
-            SET is_default = true,
-                updated_at = NOW()
-            WHERE id = $1
-          `,
-          [nextAddress.rows[0].id]
+      if (nextAddress[0]?.id) {
+        await connection.execute(
+          `UPDATE user_addresses SET is_default = true, updated_at = NOW() WHERE id = ?`,
+          [nextAddress[0].id]
         );
       }
     }
 
-    await client.query('COMMIT');
+    await connection.commit();
     return true;
   } catch (error) {
-    await client.query('ROLLBACK');
+    await connection.rollback();
     throw error;
   } finally {
-    client.release();
+    connection.release();
   }
 }
 

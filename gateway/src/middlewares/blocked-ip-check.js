@@ -1,4 +1,4 @@
-const { getPostgresPool } = require('../../../shared/db/postgres');
+const { getMysqlPool } = require('../../../shared/db/mysql');
 
 let cache = null;
 let cacheTime = 0;
@@ -10,9 +10,9 @@ async function getBlockedIpsSet() {
     return cache;
   }
   try {
-    const pool = getPostgresPool();
-    const result = await pool.query('SELECT ip_address FROM blocked_ips');
-    cache = new Set(result.rows.map((r) => String(r.ip_address || '').trim()));
+    const pool = getMysqlPool();
+    const [rows] = await pool.query('SELECT ip_address FROM blocked_ips');
+    cache = new Set(rows.map((r) => String(r.ip_address || '').trim()));
     cacheTime = now;
     return cache;
   } catch (err) {

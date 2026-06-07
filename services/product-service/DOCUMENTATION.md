@@ -1,5 +1,6 @@
-# Product service — pointer vers la doc centrale
+﻿# Product service â€” pointer vers la doc centrale
 
-Fiche détaillée : **[Amaz_back/docs/services/product-service.md](../../docs/services/product-service.md)**
+Fiche dÃ©taillÃ©e : **[Amaz_back/docs/services/product-service.md](../../docs/services/product-service.md)**
 
-Rôle : catalogue **MongoDB**, wishlists, suggestions de recherche ; contrôle **vendeur approuvé** (avec lecture **PostgreSQL**) pour certaines mutations.
+RÃ´le : catalogue **MongoDB**, wishlists, suggestions de recherche ; contrÃ´le **vendeur approuvÃ©** (avec lecture **MySQL**) pour certaines mutations.
+

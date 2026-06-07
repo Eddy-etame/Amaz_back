@@ -1,6 +1,6 @@
 /**
  * E2E auth test: register, login, /auth/me with PoW.
- * Prerequisite: gateway + user-service + pepper + Postgres running.
+ * Prerequisite: gateway + user-service + pepper + MySQL running.
  *
  * Usage: node scripts/run-e2e-auth.js
  *   Or:  npm run test:e2e-auth

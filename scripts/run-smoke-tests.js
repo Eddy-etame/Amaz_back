@@ -1,4 +1,4 @@
-const fs = require('fs');
+﻿const fs = require('fs');
 const path = require('path');
 
 function readFileSafe(filePath) {
@@ -33,8 +33,8 @@ function main() {
     'services/order-service/src/app.js',
     'services/messaging-service/src/app.js',
     'services/pepper-service/src/app.js',
-    'db/postgres/migrations/001_init.sql',
-    'db/postgres/migrations/007_order_status_history.sql',
+    'db/MySQL/migrations/001_init.sql',
+    'db/MySQL/migrations/007_order_status_history.sql',
     'docs/openapi/gateway-v1.yaml',
     'db/mongo/init.js',
     'scripts/health-and-contract-smoke.js',
@@ -112,7 +112,7 @@ function main() {
     failures
   );
 
-  const sqlSchema = readFileSafe(path.join(root, 'db/postgres/migrations/001_init.sql')) || '';
+  const sqlSchema = readFileSafe(path.join(root, 'db/MySQL/migrations/001_init.sql')) || '';
   assert(
     hasAllSnippets(sqlSchema, [
       'CREATE TABLE IF NOT EXISTS users',
@@ -122,11 +122,11 @@ function main() {
       'CREATE TABLE IF NOT EXISTS orders',
       'CREATE TABLE IF NOT EXISTS security_events'
     ]),
-    'PostgreSQL migration does not include required core tables',
+    'MySQL migration does not include required core tables',
     failures
   );
 
-  const histMigration = readFileSafe(path.join(root, 'db/postgres/migrations/007_order_status_history.sql')) || '';
+  const histMigration = readFileSafe(path.join(root, 'db/MySQL/migrations/007_order_status_history.sql')) || '';
   assert(
     hasAllSnippets(histMigration, ['order_status_history', 'CREATE TABLE IF NOT EXISTS order_status_history']),
     '007_order_status_history migration missing or incomplete',
@@ -145,3 +145,4 @@ function main() {
 }
 
 main();
+

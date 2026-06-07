@@ -1,7 +1,7 @@
-const { getPostgresPool } = require('../../../../shared/db/postgres');
+const { getMysqlPool } = require('../../../../shared/db/mysql');
 
 /**
- * After requireVendorRole: admins pass; vendors must have approval_status = 'approved' in Postgres.
+ * After requireVendorRole: admins pass; vendors must have approval_status = 'approved' in MySQL.
  */
 async function requireApprovedVendor(req, res, next) {
   const role = String(req.headers['x-auth-role'] || '').trim();
@@ -22,12 +22,12 @@ async function requireApprovedVendor(req, res, next) {
   }
 
   try {
-    const pool = getPostgresPool();
-    const result = await pool.query(
-      `SELECT approval_status FROM vendors WHERE id = $1 LIMIT 1`,
+    const pool = getMysqlPool();
+    const [rows] = await pool.query(
+      `SELECT approval_status FROM vendors WHERE id = ? LIMIT 1`,
       [userId]
     );
-    const row = result.rows[0];
+    const row = rows[0];
     if (!row) {
       return res.status(403).json({
         success: false,

@@ -1,10 +1,10 @@
-# Local verification (Amaz_back)
+﻿# Local verification (Amaz_back)
 
 ## Prerequisites
 
-1. **PostgreSQL + MongoDB** running (`docker compose up -d` from `Amaz_back`).
-2. **Migrations + seed**: `npm run db:bootstrap` (uses `PG_*` from `.env` — must match services).
-3. **Full API stack** on localhost ports **3000–3006** (e.g. `docker compose -f docker-compose.full.yml up -d --build`).
+1. **MySQL + MongoDB** running (`docker compose up -d` from `Amaz_back`).
+2. **Migrations + seed**: `npm run db:bootstrap` (uses `PG_*` from `.env` â€” must match services).
+3. **Full API stack** on localhost ports **3000â€“3006** (e.g. `docker compose -f docker-compose.full.yml up -d --build`).
 4. **`.env`** in `Amaz_back` with secrets documented in [README.md](../README.md).
 
 ## One-shot backend check
@@ -17,11 +17,11 @@ npm run verify:local
 
 This runs in order:
 
-1. `npm test` — static structure / wiring smoke (no network).
-2. `npm run test:contract-smoke` — per-service health + minimal PoW contract via gateway.
-3. `npm run qa:campaign` — `/health` on gateway and each service port.
-4. `npm run test:gateway-suite` — PoW + register/login + produits + commandes + wishlist + AI + messages + bot auth.
-5. `npm run test:e2e-auth` — login + `/auth/me` with seeded-style credentials.
+1. `npm test` â€” static structure / wiring smoke (no network).
+2. `npm run test:contract-smoke` â€” per-service health + minimal PoW contract via gateway.
+3. `npm run qa:campaign` â€” `/health` on gateway and each service port.
+4. `npm run test:gateway-suite` â€” PoW + register/login + produits + commandes + wishlist + AI + messages + bot auth.
+5. `npm run test:e2e-auth` â€” login + `/auth/me` with seeded-style credentials.
 
 **Failures:** If step 2+ fail with connection errors, the stack is not up or ports are wrong. If auth fails with `42703`, run `npm run db:bootstrap` against the same database the user-service uses.
 
@@ -56,8 +56,8 @@ From `Amaz_back` you can use `cd ../users && npx ng build` if `users` sits next 
 
 **Unit tests (users):**
 
-- `cd users && npx ng test` — Karma/Jasmine (may open a browser unless configured headless).
-- `cd users && npm run test:unit` — Vitest for pure utils / `ShareService.absoluteUrl` (headless).
+- `cd users && npx ng test` â€” Karma/Jasmine (may open a browser unless configured headless).
+- `cd users && npm run test:unit` â€” Vitest for pure utils / `ShareService.absoluteUrl` (headless).
 
 ## PWA (users storefront)
 
@@ -75,11 +75,12 @@ After Mongo is up:
    - Expect **more than 400** products total (legacy + generated).
 
 2. **API smoke** (with gateway + PoW as in `test:gateway-suite`, or authenticated as your env requires):  
-   - `GET /api/v1/produits?limit=500` — `data.pagination.total` should be **> 400** after reseed.  
-   - `GET /api/v1/produits/suggest?q=bu&limit=8` — non-empty `data.items` when the catalog matches; each item should include image and price fields.
+   - `GET /api/v1/produits?limit=500` â€” `data.pagination.total` should be **> 400** after reseed.  
+   - `GET /api/v1/produits/suggest?q=bu&limit=8` â€” non-empty `data.items` when the catalog matches; each item should include image and price fields.
 
 3. **users storefront** (`cd ../users && npx ng serve` or your usual command):  
-   - **PLP:** Set prix min (e.g. 100), click **Appliquer** — no product below min; URL contains `minPrix` (and `maxPrix` if set). Refresh keeps filters.  
-   - **Search bar:** Type at least 2 characters — dropdown shows **thumbnail + title + price** (server suggest when online; falls back to in-memory catalog if the request fails).
+   - **PLP:** Set prix min (e.g. 100), click **Appliquer** â€” no product below min; URL contains `minPrix` (and `maxPrix` if set). Refresh keeps filters.  
+   - **Search bar:** Type at least 2 characters â€” dropdown shows **thumbnail + title + price** (server suggest when online; falls back to in-memory catalog if the request fails).
 
 See also [MICROSERVICES_FRONTEND_MAP.md](./MICROSERVICES_FRONTEND_MAP.md) for how services map to Angular.
+

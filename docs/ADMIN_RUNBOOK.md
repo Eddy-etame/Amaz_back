@@ -21,7 +21,7 @@ Internal routes (machine-only, signed `x-internal-*`): `PATCH /internal/admin/ve
 
 | Surface | URL / access | Use for |
 |--------|----------------|---------|
-| **AdminJS** | `http://localhost:3010/admin` (default) | Fast CRUD on **PostgreSQL** tables (users, vendors, orders, sessions, `security_events`, `blocked_ips`, …). Optional **read-only** MongoDB `products` when `MONGO_URI` is set. |
+| **AdminJS** | `http://localhost:3010/admin` (default) | Fast CRUD on **MySQL** tables (users, vendors, orders, sessions, `security_events`, `blocked_ips`, …). Optional **read-only** MongoDB `products` when `MONGO_URI` is set. |
 | **REST (user-service)** | Via gateway: `GET/POST/DELETE /api/v1/auth/admin/...` with **admin** JWT | Vendor approve/reject, IP blocklist; responses align with app API conventions. |
 | **Angular `admin` app** | Separate SPA (repo `Rep_Amazon-Admin`) | Landing page with links to AdminJS, gateway health, and this runbook—not a second CRUD source of truth. |
 
@@ -31,7 +31,7 @@ Internal routes (machine-only, signed `x-internal-*`): `PATCH /internal/admin/ve
 
 - `INTERNAL_SHARED_SECRET` — must match user-service (internal caller `admin-service`).
 - `USER_SERVICE_URL` — e.g. `http://localhost:3001` for `/internal/admin/authenticate`.
-- `PG_*` or `DATABASE_URL` — same Postgres as the platform (sessions table `admin_session` is created by `connect-pg-simple` if missing).
+- `MYSQL_*` or `DATABASE_URL` — same MySQL as the platform (sessions table `admin_session` is managed by Express session store in this setup).
 - `ADMIN_SESSION_SECRET` — strong random string for Express session signing (set in production).
 
 ## Hardening (production)
@@ -47,10 +47,10 @@ When **`MONGO_URI`** (and optionally **`MONGO_DB_NAME`**) is set in `.env`, `adm
 
 ## Blocking IPs
 
-- **Runtime enforcement:** gateway reads `blocked_ips` (Postgres) with a short TTL cache.
+- **Runtime enforcement:** gateway reads `blocked_ips` (MySQL) with a short TTL cache.
 - **Management:** `POST/GET/DELETE /api/v1/auth/admin/ip-blocklist` (admin JWT) or edit `blocked_ips` in AdminJS (ensure gateway cache TTL allows timely unblock).
 
 ## References
 
-- Seed admin: `db/postgres/seed.js` (`admin@amaz.local` in dev).
+- Seed admin: `db/mysql/seed.js` (`admin@amaz.local` in dev).
 - User-service internal: `POST /internal/admin/authenticate` (used by AdminJS login).

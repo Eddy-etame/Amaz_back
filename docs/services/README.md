@@ -1,4 +1,4 @@
-# Amaz Backend Services Documentation
+﻿# Amaz Backend Services Documentation
 
 This directory contains per-service documentation for the Amaz microservices backend.
 
@@ -13,7 +13,7 @@ This directory contains per-service documentation for the Amaz microservices bac
 | [Messaging Service](messaging-service.md) | 3004 | User-vendor messaging, Socket.IO |
 | [AI Service](ai-service.md) | 3005 | AI recommendations, bot auth |
 | [Pepper Service](pepper-service.md) | 3006 | Password/token peppering (HMAC) |
-| [Admin Service](admin-service.md) | 3010 | AdminJS back-office (PostgreSQL) |
+| [Admin Service](admin-service.md) | 3010 | AdminJS back-office (MySQL) |
 
 ## Generating PDFs
 
@@ -24,3 +24,4 @@ npm run docs:pdf
 ```
 
 Output: **`docs/pdf/*.pdf`** at the **repository root** (sibling of `Amaz_back/`). See [`docs/pdf/README.md`](../../../docs/pdf/README.md).
+

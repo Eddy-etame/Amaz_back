@@ -1,25 +1,25 @@
-/**
- * Database bootstrap: run all Postgres migrations in order, then seed.
- * Prerequisite: Postgres and Mongo running (e.g. docker compose up -d).
+﻿/**
+ * Database bootstrap: run all MySQL migrations in order, then seed.
+ * Prerequisite: MySQL and Mongo running (e.g. docker compose up -d).
  *
  * Usage: node scripts/db-bootstrap.js
  *   Or:  npm run db:bootstrap
  *
- * Uses .env for PG_HOST, PG_PORT, PG_USER, PG_PASSWORD, PG_DATABASE, MONGO_URI.
- * Optional: PG_SUPERUSER, PG_SUPERUSER_PASSWORD for creating amaz role when missing.
+ * Uses .env for MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MONGO_URI.
+ * Optional: MYSQL_SUPERUSER, MYSQL_SUPERUSER_PASSWORD for creating amaz database/user when missing.
  */
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { Pool } = require('pg');
+const mysql = require('mysql2/promise');
 
 require('dotenv').config({
   path: path.resolve(__dirname, '../.env')
 });
 
-const { getPostgresPool, resetPostgresPool } = require('../shared/db/postgres');
+const { getMysqlPool, resetMysqlPool } = require('../shared/db/mysql');
 
-const MIGRATIONS_DIR = path.resolve(__dirname, '../db/postgres/migrations');
+const MIGRATIONS_DIR = path.resolve(__dirname, '../db/mysql/migrations');
 const MIGRATION_ORDER = [
   '001_init.sql',
   '002_vendors.sql',
@@ -32,32 +32,35 @@ const MIGRATION_ORDER = [
 ];
 
 function createPool(overrides = {}) {
-  return new Pool({
-    host: process.env.PG_HOST,
-    port: Number(process.env.PG_PORT || 5432),
-    user: overrides.user ?? process.env.PG_USER,
-    password: overrides.password ?? process.env.PG_PASSWORD,
-    database: overrides.database ?? process.env.PG_DATABASE ?? process.env.PG_DB ?? 'postgres',
-    ssl: String(process.env.PG_SSL || 'false') === 'true' ? { rejectUnauthorized: false } : false,
-    max: 2,
-    idleTimeoutMillis: 5000
+  return mysql.createPool({
+    host: process.env.MYSQL_HOST || process.env.MYSQL_HOST || 'localhost',
+    port: Number(process.env.MYSQL_PORT || process.env.MYSQL_PORT || 3306),
+    user: overrides.user ?? process.env.MYSQL_USER,
+    password: overrides.password ?? process.env.MYSQL_PASSWORD,
+    database: overrides.database ?? process.env.MYSQL_DATABASE ?? process.env.MYSQL_DB ?? 'amaz_db',
+    waitForConnections: true,
+    connectionLimit: 2,
+    queueLimit: 0,
+    multipleStatements: true
   });
 }
 
-async function ensureAmazRole() {
-  const superUser = process.env.PG_SUPERUSER || 'postgres';
-  const db = (process.env.PG_DATABASE || process.env.PG_DB || 'amaz_db').replace(/[^a-zA-Z0-9_]/g, '') || 'amaz_db';
-  const amazUser = (process.env.PG_USER || 'amaz').replace(/[^a-zA-Z0-9_]/g, '') || 'amaz';
-  const amazPass = process.env.PG_PASSWORD || 'amaz';
+async function ensureAmazDatabase() {
+  const superUser = process.env.MYSQL_SUPERUSER || process.env.MYSQL_USER || 'root';
+  const db = (process.env.MYSQL_DATABASE || process.env.MYSQL_DB || process.env.MYSQL_DATABASE || process.env.MYSQL_DB || 'amaz_db')
+    .replace(/[^a-zA-Z0-9_]/g, '') || 'amaz_db';
+  const amazUser = (process.env.MYSQL_USER || process.env.MYSQL_USER || 'amaz').replace(/[^a-zA-Z0-9_]/g, '') || 'amaz';
+  const amazPass = process.env.MYSQL_PASSWORD || process.env.MYSQL_PASSWORD || 'amaz';
+  const dbSafe = db.replace(/`/g, '');
 
   const passwordsToTry = [
-    process.env.PG_SUPERUSER_PASSWORD,
-    process.env.PG_SUPERUSER_PASSWORD_ALT,
-    process.env.PG_PASSWORD,
+    process.env.MYSQL_SUPERUSER_PASSWORD,
+    process.env.MYSQL_SUPERUSER_PASSWORD_ALT,
+    process.env.MYSQL_PASSWORD,
+    process.env.MYSQL_PASSWORD,
     '',
-    'postgres',
-    'Amaz@2026!',
-    'Amaz@2026!'
+    'root',
+    'password'
   ].filter((p, i, arr) => p !== undefined && p !== null && arr.indexOf(p) === i);
 
   let pool;
@@ -65,7 +68,7 @@ async function ensureAmazRole() {
     pool = createPool({
       user: superUser,
       password: superPass ?? '',
-      database: 'postgres'
+      database: 'mysql'
     });
     try {
       await pool.query('SELECT 1');
@@ -77,24 +80,27 @@ async function ensureAmazRole() {
   }
 
   try {
-    const roleExists = await pool.query(
-      'SELECT 1 FROM pg_roles WHERE rolname = $1',
+    const [userRows] = await pool.query(
+      'SELECT 1 FROM mysql.user WHERE user = ?',
       [amazUser]
     );
-    if (roleExists.rows.length === 0) {
+    if (userRows.length === 0) {
       const safePass = (amazPass || 'amaz').replace(/'/g, "''");
-      await pool.query(`CREATE ROLE ${amazUser} WITH LOGIN PASSWORD '${safePass}'`);
-      console.log(`  Created role ${amazUser}`);
+      await pool.query('CREATE USER IF NOT EXISTS ?@\'%' IDENTIFIED BY ?', [amazUser, safePass]);
+      console.log(`  Created user ${amazUser}`);
     }
 
-    const dbCheck = await pool.query(
-      'SELECT 1 FROM pg_database WHERE datname = $1',
-      [db]
+    const [dbRows] = await pool.query(
+      'SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?',
+      [dbSafe]
     );
-    if (dbCheck.rows.length === 0) {
-      await pool.query(`CREATE DATABASE ${db} OWNER ${amazUser}`);
-      console.log(`  Created database ${db}`);
+    if (dbRows.length === 0) {
+      await pool.query(`CREATE DATABASE \`${dbSafe}\``);
+      console.log(`  Created database ${dbSafe}`);
     }
+
+    await pool.query(`GRANT ALL PRIVILEGES ON \`${dbSafe}\`.* TO ?@'%'`, [amazUser]);
+    await pool.query('FLUSH PRIVILEGES');
   } finally {
     await pool.end();
   }
@@ -127,32 +133,33 @@ function runScript(scriptPath, label) {
 async function main() {
   console.log('=== Amaz DB Bootstrap ===\n');
 
-  let pool = getPostgresPool();
+  let pool = getMysqlPool();
 
   try {
-    console.log('Running Postgres migrations...');
+    console.log('Running MySQL migrations...');
     await runMigrations(pool);
     console.log('Migrations done.\n');
   } catch (err) {
-    const isRoleMissing = /role "amaz" does not exist|role .amaz. does not exist/i.test(err.message);
-    if (isRoleMissing) {
-      console.log('amaz role not found. Creating it via superuser...');
+    const isSetupIssue = /access denied|unknown database|ER_ACCESS_DENIED_ERROR|ER_BAD_DB_ERROR/i.test(err.message);
+    if (isSetupIssue) {
+      console.log('Database setup issue detected. Creating database/user via superuser...');
       try {
-        await ensureAmazRole();
+        await ensureAmazDatabase();
       } catch (superErr) {
-        console.error('Could not create amaz role:', superErr.message);
-        console.error('\nTo fix manually: connect as postgres superuser and run:');
-        console.error('  CREATE ROLE amaz WITH LOGIN PASSWORD \'amaz\';');
-        console.error('  CREATE DATABASE amaz_db OWNER amaz;');
-        console.error('\nOr recreate the Postgres volume:');
+        console.error('Could not create MySQL database/user:', superErr.message);
+        console.error('\nTo fix manually: connect as MySQL superuser and run:');
+        console.error('  CREATE DATABASE amaz_db;');
+        console.error('  CREATE USER IF NOT EXISTS \'amaz\'@\'%' IDENTIFIED BY \'amaz\';');
+        console.error('  GRANT ALL PRIVILEGES ON amaz_db.* TO \'amaz\'@\'%\';');
+        console.error('\nOr recreate the MySQL volume and retry:');
         console.error('  docker compose -f docker-compose.full.yml down -v');
         console.error('  docker compose -f docker-compose.full.yml up -d');
         console.error('  npm run db:bootstrap');
         process.exitCode = 1;
         return;
       }
-      await resetPostgresPool();
-      pool = getPostgresPool();
+      await resetMysqlPool();
+      pool = getMysqlPool();
       console.log('Retrying migrations...');
       await runMigrations(pool);
       console.log('Migrations done.\n');
@@ -162,12 +169,12 @@ async function main() {
       return;
     }
   } finally {
-    await resetPostgresPool();
+    await resetMysqlPool();
   }
 
-  console.log('Running Postgres seed...');
-  runScript(path.join(__dirname, '../db/postgres/seed.js'), 'Postgres seed');
-  console.log('Postgres seed done.\n');
+  console.log('Running MySQL seed...');
+  runScript(path.join(__dirname, '../db/mysql/seed.js'), 'MySQL seed');
+  console.log('MySQL seed done.\n');
 
   console.log('Running Mongo init...');
   runScript(path.join(__dirname, '../db/mongo/init.js'), 'Mongo init');
@@ -180,3 +187,4 @@ main().catch((err) => {
   console.error(err);
   process.exitCode = 1;
 });
+

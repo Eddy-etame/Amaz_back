@@ -19,10 +19,10 @@
     "start:pepper": "npm --workspace pepper-service run start",
     "start:admin": "npm --workspace admin-service run start",
     "db:mongo:init": "node ./db/mongo/init.js",
-    "db:postgres:seed": "node ./db/postgres/seed.js",
-    "db:postgres:seed:docker": "docker compose --profile tools run --rm seed",
-    "db:postgres:seed:docker-full": "docker compose -f docker-compose.full.yml --profile tools run --rm seed",
-    "db:seed": "npm run db:mongo:init && npm run db:postgres:seed",
+    "db:mysql:seed": "node ./db/mysql/seed.js",
+    "db:mysql:seed:docker": "docker compose --profile tools run --rm seed",
+    "db:mysql:seed:docker-full": "docker compose -f docker-compose.full.yml --profile tools run --rm seed",
+    "db:seed": "npm run db:mongo:init && npm run db:mysql:seed",
     "db:bootstrap": "node ./scripts/db-bootstrap.js",
     "db:bootstrap:docker": "docker compose -f docker-compose.full.yml --profile tools run --rm bootstrap",
     "test": "node ./scripts/run-smoke-tests.js",
@@ -44,7 +44,7 @@
   "dependencies": {
     "dotenv": "^16.4.5",
     "mongodb": "^6.10.0",
-    "pg": "^8.11.3"
+    "mysql2": "^3.22.4"
   },
   "devDependencies": {
     "md-to-pdf": "^5.2.5"

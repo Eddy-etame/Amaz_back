@@ -1656,7 +1656,7 @@ async function authenticateAdmin({ email, password }) {
   };
 }
 
-/** Resolve Postgres user id for an admin email (used by admin-service internal calls). */
+/** Resolve MySQL user id for an admin email (used by admin-service internal calls). */
 async function resolveAdminUserIdFromEmail(email) {
   const e = String(email || '').trim();
   if (!e) return null;

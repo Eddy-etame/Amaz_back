@@ -3,7 +3,7 @@ const express = require('express');
 const { requestIdMiddleware } = require('../../../shared/middleware/request-id');
 const { createInternalAuthMiddleware } = require('../../../shared/middleware/internal-auth');
 const { errorHandler, notFoundHandler } = require('../../../shared/middleware/error-handler');
-const { getPostgresPool } = require('../../../shared/db/postgres');
+const { getMysqlPool } = require('../../../shared/db/mysql');
 const { randomId } = require('../../../shared/utils/ids');
 const { internalFetch } = require('../../../shared/utils/internal-http');
 const { config } = require('./config');
@@ -35,8 +35,21 @@ function parseOrderItems(payload = {}) {
 }
 
 function mapOrderRow(row) {
-  const rawItems = Array.isArray(row.items) ? row.items : [];
-  const shippingAddress = row.shipping_address || null;
+  let rawItems = [];
+  try {
+    rawItems = typeof row.items === 'string' ? JSON.parse(row.items) : (Array.isArray(row.items) ? row.items : []);
+  } catch {
+    rawItems = [];
+  }
+
+  let shippingAddress = null;
+  try {
+    shippingAddress = typeof row.shipping_address === 'string'
+      ? JSON.parse(row.shipping_address)
+      : row.shipping_address || null;
+  } catch {
+    shippingAddress = null;
+  }
 
   return {
     id: row.id,
@@ -77,32 +90,18 @@ function mapOrderRow(row) {
 }
 
 async function fetchUserContact(userId) {
-  const pool = getPostgresPool();
-  const result = await pool.query(
-    `
-      SELECT id, username, email, phone
-      FROM user_accounts
-      WHERE id = $1
-      LIMIT 1
-    `,
+  const pool = getMysqlPool();
+  const [rows] = await pool.query(
+    `SELECT id, username, email, phone FROM user_accounts WHERE id = ? LIMIT 1`,
     [userId]
   );
-
-  return result.rows[0] || null;
+  return rows[0] || null;
 }
 
 async function sendOrderNotification({
-  type,
-  orderId,
-  userId,
-  userEmail,
-  userName,
-  total,
-  requestId
+  type, orderId, userId, userEmail, userName, total, requestId
 }) {
-  if (!userEmail) {
-    return;
-  }
+  if (!userEmail) return;
 
   await internalFetch({
     baseUrl: config.userServiceUrl,
@@ -111,12 +110,7 @@ async function sendOrderNotification({
     body: {
       type,
       to: userEmail,
-      templateData: {
-        userId,
-        userName: userName || 'Client',
-        orderId,
-        total
-      }
+      templateData: { userId, userName: userName || 'Client', orderId, total }
     },
     callerService: 'order-service',
     secret: config.internalSharedSecret,
@@ -127,9 +121,7 @@ async function sendOrderNotification({
 
 function mapOrderForRole(row, role, authUserId) {
   const mapped = mapOrderRow(row);
-  if (role !== 'vendor') {
-    return mapped;
-  }
+  if (role !== 'vendor') return mapped;
 
   const vendorItems = mapped.items.filter((item) => item.vendorId === authUserId);
   return {
@@ -139,11 +131,11 @@ function mapOrderForRole(row, role, authUserId) {
   };
 }
 
-async function insertOrderStatusHistory(queryable, { orderId, fromStatus, toStatus, actorType, actorId, metadata }) {
-  await queryable.query(
+async function insertOrderStatusHistory(connection, { orderId, fromStatus, toStatus, actorType, actorId, metadata }) {
+  await connection.query(
     `
       INSERT INTO order_status_history (order_id, from_status, to_status, actor_type, actor_id, metadata)
-      VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+      VALUES (?, ?, ?, ?, ?, ?)
     `,
     [
       orderId,
@@ -157,24 +149,24 @@ async function insertOrderStatusHistory(queryable, { orderId, fromStatus, toStat
 }
 
 async function loadStatusHistoryForOrder(pool, orderId, limit = 20) {
-  const r = await pool.query(
+  const [rows] = await pool.query(
     `
       SELECT
-        id::text AS id,
-        from_status AS "fromStatus",
-        to_status AS "toStatus",
-        actor_type AS "actorType",
-        actor_id AS "actorId",
+        id AS id,
+        from_status AS fromStatus,
+        to_status AS toStatus,
+        actor_type AS actorType,
+        actor_id AS actorId,
         metadata,
-        created_at AS "createdAt"
+        created_at AS createdAt
       FROM order_status_history
-      WHERE order_id = $1
+      WHERE order_id = ?
       ORDER BY created_at DESC
-      LIMIT $2
+      LIMIT ?
     `,
     [orderId, limit]
   );
-  return r.rows;
+  return rows;
 }
 
 async function fetchProduct(productId, requestId) {
@@ -253,11 +245,6 @@ function createApp() {
         service: 'order-service',
         port: config.port,
         message: 'Internal microservice. Do not call directly from clients.',
-        usage: {
-          apiCalls: 'Use http://localhost:3000/api/v1/... for client/API requests (via gateway)',
-          healthCheck: `Use http://localhost:${config.port}/health for liveness`,
-          businessRoutes: 'Direct business routes require x-internal-* signed headers (gateway only)'
-        },
         requestId: req.requestId
       },
       requestId: req.requestId
@@ -276,10 +263,7 @@ function createApp() {
     if (!userId) {
       return res.status(401).json({
         success: false,
-        error: {
-          code: 'AUTH_REQUIRED',
-          message: 'Authentification requise'
-        },
+        error: { code: 'AUTH_REQUIRED', message: 'Authentification requise' },
         requestId: req.requestId
       });
     }
@@ -294,7 +278,7 @@ function createApp() {
         error: {
           code: 'VALIDATION_ERROR',
           message: hasPayload
-            ? 'Chaque article doit avoir un productId valide et une quantité (articles[].productId / quantité).'
+            ? 'Chaque article doit avoir un productId valide et une quantité.'
             : 'articles ou items non vides requis dans le corps JSON.'
         },
         requestId: req.requestId
@@ -319,10 +303,7 @@ function createApp() {
           quantity: rawItem.quantity,
           requestId: req.requestId
         });
-        reservedItems.push({
-          productId: rawItem.productId,
-          quantity: rawItem.quantity
-        });
+        reservedItems.push({ productId: rawItem.productId, quantity: rawItem.quantity });
 
         enrichedItems.push({
           productId: rawItem.productId,
@@ -340,64 +321,44 @@ function createApp() {
       const shippingAddress = req.body?.adresseLivraison || req.body?.shippingAddress || {};
       const paymentMethod = String(req.body?.methodePaiement || req.body?.paymentMethod || 'card');
 
-      const pool = getPostgresPool();
-      const client = await pool.connect();
+      const pool = getMysqlPool();
+      const connection = await pool.getConnection();
       try {
-        await client.query('BEGIN');
-        await client.query(
+        await connection.beginTransaction();
+        await connection.execute(
           `
             INSERT INTO orders (
-              id,
-              user_id,
-              status,
-              total_amount,
-              currency,
-              estimated_delivery_at,
-              shipping_address,
-              payment_status,
-              payment_method
+              id, user_id, status, total_amount, currency,
+              estimated_delivery_at, shipping_address, payment_status, payment_method
             )
-            VALUES ($1, $2, 'confirmed', $3, 'EUR', $4, $5::jsonb, 'authorized', $6)
+            VALUES (?, ?, 'confirmed', ?, 'EUR', ?, ?, 'authorized', ?)
           `,
           [orderId, userId, total, estimatedDeliveryAt, JSON.stringify(shippingAddress), paymentMethod]
         );
 
         for (const item of enrichedItems) {
-          await client.query(
+          await connection.execute(
             `
               INSERT INTO order_items (
-                id,
-                order_id,
-                product_id,
-                product_title,
-                unit_price,
-                quantity,
-                vendor_id,
-                image_url
+                id, order_id, product_id, product_title,
+                unit_price, quantity, vendor_id, image_url
               )
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [
-              randomId('orditm'),
-              orderId,
-              item.productId,
-              item.title,
-              item.price,
-              item.quantity,
-              item.vendorId,
-              item.image
-            ]
+            [randomId('orditm'), orderId, item.productId, item.title,
+              item.price, item.quantity, item.vendorId, item.image]
           );
         }
 
-        await client.query(
+        await connection.execute(
           `
             INSERT INTO payment_attempts (id, order_id, provider, amount, currency, status, provider_ref)
-            VALUES ($1, $2, 'mock', $3, 'EUR', 'authorized', $4)
+            VALUES (?, ?, 'mock', ?, 'EUR', 'authorized', ?)
           `,
           [randomId('pay'), orderId, total, randomId('provider')]
         );
-        await insertOrderStatusHistory(client, {
+
+        await insertOrderStatusHistory(connection, {
           orderId,
           fromStatus: null,
           toStatus: 'confirmed',
@@ -405,12 +366,13 @@ function createApp() {
           actorId: userId,
           metadata: { source: 'checkout' }
         });
-        await client.query('COMMIT');
+
+        await connection.commit();
       } catch (error) {
-        await client.query('ROLLBACK');
+        await connection.rollback();
         throw error;
       } finally {
-        client.release();
+        connection.release();
       }
 
       const userContact = await fetchUserContact(userId);
@@ -475,6 +437,7 @@ function createApp() {
           requestId: req.requestId
         });
       }
+
       const statusFilter = String(req.query.status || '').trim();
       const page = Math.max(Number(req.query.page || 1), 1);
       const limit = Math.min(Math.max(Number(req.query.limit || 20), 1), 100);
@@ -485,23 +448,21 @@ function createApp() {
 
       if (statusFilter && ORDER_STATUSES.includes(statusFilter)) {
         values.push(statusFilter);
-        conditions.push(`o.status = $${values.length}`);
+        conditions.push(`o.status = ?`);
       }
 
       if (role === 'vendor') {
         values.push(authUserId);
-        conditions.push(`EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.vendor_id = $${values.length})`);
+        conditions.push(`EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.vendor_id = ?)`);
       } else if (role !== 'admin') {
         values.push(authUserId);
-        conditions.push(`o.user_id = $${values.length}`);
+        conditions.push(`o.user_id = ?`);
       }
 
       const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-      const pool = getPostgresPool();
+      const pool = getMysqlPool();
 
-      values.push(limit);
-      values.push(offset);
-      const listResult = await pool.query(
+      const [listRows] = await pool.query(
         `
           SELECT
             o.*,
@@ -509,8 +470,8 @@ function createApp() {
             u.email AS user_email,
             u.phone AS user_phone,
             COALESCE(
-              json_agg(
-                json_build_object(
+              JSON_ARRAYAGG(
+                JSON_OBJECT(
                   'id', i.id,
                   'productId', i.product_id,
                   'title', i.product_title,
@@ -519,8 +480,8 @@ function createApp() {
                   'vendorId', i.vendor_id,
                   'image', i.image_url
                 )
-              ) FILTER (WHERE i.id IS NOT NULL),
-              '[]'::json
+              ),
+              JSON_ARRAY()
             ) AS items
           FROM orders o
           LEFT JOIN user_accounts u ON u.id = o.user_id
@@ -528,32 +489,22 @@ function createApp() {
           ${whereClause}
           GROUP BY o.id, u.username, u.email, u.phone
           ORDER BY o.created_at DESC
-          LIMIT $${values.length - 1}
-          OFFSET $${values.length}
+          LIMIT ? OFFSET ?
         `,
-        values
+        [...values, limit, offset]
       );
 
-      const countValues = values.slice(0, values.length - 2);
-      const countResult = await pool.query(
-        `
-          SELECT COUNT(*)::int AS count
-          FROM orders o
-          ${whereClause}
-        `,
-        countValues
+      const [countRows] = await pool.query(
+        `SELECT COUNT(*) AS count FROM orders o ${whereClause}`,
+        values
       );
-      const total = Number(countResult.rows[0]?.count || 0);
+      const total = Number(countRows[0]?.count || 0);
 
       return res.status(200).json({
         success: true,
         data: {
-          items: listResult.rows.map((row) => mapOrderForRole(row, role, authUserId)),
-          pagination: {
-            page,
-            limit,
-            total
-          }
+          items: listRows.map((row) => mapOrderForRole(row, role, authUserId)),
+          pagination: { page, limit, total }
         },
         requestId: req.requestId
       });
@@ -567,6 +518,7 @@ function createApp() {
       const orderId = String(req.params.orderId || '').trim();
       const authUserId = String(req.headers['x-auth-user-id'] || '').trim();
       const role = String(req.headers['x-auth-role'] || '').trim();
+
       if (role !== 'admin' && !authUserId) {
         return res.status(401).json({
           success: false,
@@ -574,9 +526,9 @@ function createApp() {
           requestId: req.requestId
         });
       }
-      const pool = getPostgresPool();
 
-      const result = await pool.query(
+      const pool = getMysqlPool();
+      const [rows] = await pool.query(
         `
           SELECT
             o.*,
@@ -584,8 +536,8 @@ function createApp() {
             u.email AS user_email,
             u.phone AS user_phone,
             COALESCE(
-              json_agg(
-                json_build_object(
+              JSON_ARRAYAGG(
+                JSON_OBJECT(
                   'id', i.id,
                   'productId', i.product_id,
                   'title', i.product_title,
@@ -594,19 +546,20 @@ function createApp() {
                   'vendorId', i.vendor_id,
                   'image', i.image_url
                 )
-              ) FILTER (WHERE i.id IS NOT NULL),
-              '[]'::json
+              ),
+              JSON_ARRAY()
             ) AS items
           FROM orders o
           LEFT JOIN user_accounts u ON u.id = o.user_id
           LEFT JOIN order_items i ON i.order_id = o.id
-          WHERE o.id = $1
+          WHERE o.id = ?
           GROUP BY o.id, u.username, u.email, u.phone
           LIMIT 1
         `,
         [orderId]
       );
-      const order = result.rows[0];
+
+      const order = rows[0];
       if (!order) {
         return res.status(404).json({
           success: false,
@@ -616,7 +569,8 @@ function createApp() {
       }
 
       if (role === 'vendor') {
-        const vendorOwns = Array.isArray(order.items) && order.items.some((item) => item.vendorId === authUserId);
+        const parsedItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+        const vendorOwns = Array.isArray(parsedItems) && parsedItems.some((item) => item.vendorId === authUserId);
         if (!vendorOwns) {
           return res.status(403).json({
             success: false,
@@ -657,6 +611,7 @@ function createApp() {
       const orderId = String(req.params.orderId || '').trim();
       const authUserId = String(req.headers['x-auth-user-id'] || '').trim();
       const role = String(req.headers['x-auth-role'] || '').trim();
+
       if (role !== 'admin' && !authUserId) {
         return res.status(401).json({
           success: false,
@@ -664,32 +619,28 @@ function createApp() {
           requestId: req.requestId
         });
       }
-      const pool = getPostgresPool();
 
-      const details = await pool.query(
+      const pool = getMysqlPool();
+      const [detailRows] = await pool.query(
         `
           SELECT
-            o.id,
-            o.user_id,
-            o.status,
+            o.id, o.user_id, o.status,
             COALESCE(
-              json_agg(
-                json_build_object(
-                  'productId', i.product_id,
-                  'quantity', i.quantity
-                )
-              ) FILTER (WHERE i.id IS NOT NULL),
-              '[]'::json
+              JSON_ARRAYAGG(
+                JSON_OBJECT('productId', i.product_id, 'quantity', i.quantity)
+              ),
+              JSON_ARRAY()
             ) AS items
           FROM orders o
           LEFT JOIN order_items i ON i.order_id = o.id
-          WHERE o.id = $1
+          WHERE o.id = ?
           GROUP BY o.id
           LIMIT 1
         `,
         [orderId]
       );
-      const order = details.rows[0];
+
+      const order = detailRows[0];
       if (!order) {
         return res.status(404).json({
           success: false,
@@ -714,19 +665,14 @@ function createApp() {
         });
       }
 
-      const cancelClient = await pool.connect();
+      const connection = await pool.getConnection();
       try {
-        await cancelClient.query('BEGIN');
-        await cancelClient.query(
-          `
-            UPDATE orders
-            SET status = 'cancelled',
-                updated_at = NOW()
-            WHERE id = $1
-          `,
+        await connection.beginTransaction();
+        await connection.execute(
+          `UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = ?`,
           [orderId]
         );
-        await insertOrderStatusHistory(cancelClient, {
+        await insertOrderStatusHistory(connection, {
           orderId,
           fromStatus: order.status,
           toStatus: 'cancelled',
@@ -734,17 +680,19 @@ function createApp() {
           actorId: authUserId,
           metadata: null
         });
-        await cancelClient.query('COMMIT');
+        await connection.commit();
       } catch (e) {
-        await cancelClient.query('ROLLBACK');
+        await connection.rollback();
         throw e;
       } finally {
-        cancelClient.release();
+        connection.release();
       }
 
-      const releaseItems = (Array.isArray(order.items) ? order.items : []).filter(
+      const parsedItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      const releaseItems = (Array.isArray(parsedItems) ? parsedItems : []).filter(
         (item) => String(item.productId || '').trim() && Number(item.quantity || 0) > 0
       );
+
       await Promise.all(
         releaseItems.map((item) =>
           releaseProductStock({
@@ -757,10 +705,7 @@ function createApp() {
 
       return res.status(200).json({
         success: true,
-        data: {
-          id: orderId,
-          status: 'cancelled'
-        },
+        data: { id: orderId, status: 'cancelled' },
         requestId: req.requestId
       });
     } catch (error) {
@@ -778,10 +723,7 @@ function createApp() {
       if (!ORDER_STATUSES.includes(nextStatus)) {
         return res.status(400).json({
           success: false,
-          error: {
-            code: 'INVALID_STATUS',
-            message: 'Statut invalide'
-          },
+          error: { code: 'INVALID_STATUS', message: 'Statut invalide' },
           requestId: req.requestId
         });
       }
@@ -789,83 +731,81 @@ function createApp() {
       if (!['admin', 'vendor'].includes(role)) {
         return res.status(403).json({
           success: false,
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Mise à jour statut réservée aux vendeurs/admin'
-          },
+          error: { code: 'FORBIDDEN', message: 'Mise à jour statut réservée aux vendeurs/admin' },
           requestId: req.requestId
         });
       }
 
-      const pool = getPostgresPool();
+      const pool = getMysqlPool();
+
       if (role === 'vendor') {
-        const ownerCheck = await pool.query(
-          `
-            SELECT 1
-            FROM order_items
-            WHERE order_id = $1
-              AND vendor_id = $2
-            LIMIT 1
-          `,
+        const [ownerRows] = await pool.query(
+          `SELECT 1 FROM order_items WHERE order_id = ? AND vendor_id = ? LIMIT 1`,
           [orderId, authUserId]
         );
-        if (!ownerCheck.rowCount) {
+        if (!ownerRows.length) {
           return res.status(403).json({
             success: false,
-            error: {
-              code: 'FORBIDDEN',
-              message: 'Commande non autorisée pour ce vendeur'
-            },
+            error: { code: 'FORBIDDEN', message: 'Commande non autorisée pour ce vendeur' },
             requestId: req.requestId
           });
         }
       }
 
-      const currentRow = await pool.query(`SELECT status FROM orders WHERE id = $1 LIMIT 1`, [orderId]);
-      if (!currentRow.rowCount) {
+      const [currentRows] = await pool.query(
+        `SELECT status FROM orders WHERE id = ? LIMIT 1`,
+        [orderId]
+      );
+      if (!currentRows.length) {
         return res.status(404).json({
           success: false,
           error: { code: 'ORDER_NOT_FOUND', message: 'Commande introuvable' },
           requestId: req.requestId
         });
       }
-      const previousStatus = String(currentRow.rows[0].status || '');
+
+      const previousStatus = String(currentRows[0].status || '');
       if (previousStatus === nextStatus) {
         return res.status(200).json({
           success: true,
-          data: {
-            id: orderId,
-            status: nextStatus
-          },
+          data: { id: orderId, status: nextStatus },
           requestId: req.requestId
         });
       }
 
       const actorType = role === 'admin' ? 'system' : 'vendor';
-      const stClient = await pool.connect();
-      let updated;
+      const connection = await pool.getConnection();
+      let updatedOrder = null;
+
       try {
-        await stClient.query('BEGIN');
-        updated = await stClient.query(
+        await connection.beginTransaction();
+        await connection.execute(
           `
             UPDATE orders
-            SET status = $2,
-                delivered_at = CASE WHEN $2 = 'delivered' THEN NOW() ELSE delivered_at END,
+            SET status = ?,
+                delivered_at = CASE WHEN ? = 'delivered' THEN NOW() ELSE delivered_at END,
                 updated_at = NOW()
-            WHERE id = $1
-            RETURNING id, status, user_id, total_amount
+            WHERE id = ?
           `,
-          [orderId, nextStatus]
+          [nextStatus, nextStatus, orderId]
         );
-        if (!updated.rowCount) {
-          await stClient.query('ROLLBACK');
+
+        const [updatedRows] = await connection.execute(
+          `SELECT id, status, user_id, total_amount FROM orders WHERE id = ? LIMIT 1`,
+          [orderId]
+        );
+
+        if (!updatedRows.length) {
+          await connection.rollback();
           return res.status(404).json({
             success: false,
             error: { code: 'ORDER_NOT_FOUND', message: 'Commande introuvable' },
             requestId: req.requestId
           });
         }
-        await insertOrderStatusHistory(stClient, {
+
+        updatedOrder = updatedRows[0];
+        await insertOrderStatusHistory(connection, {
           orderId,
           fromStatus: previousStatus,
           toStatus: nextStatus,
@@ -873,16 +813,16 @@ function createApp() {
           actorId: authUserId || null,
           metadata: null
         });
-        await stClient.query('COMMIT');
+
+        await connection.commit();
       } catch (e) {
-        await stClient.query('ROLLBACK');
+        await connection.rollback();
         throw e;
       } finally {
-        stClient.release();
+        connection.release();
       }
 
-      if (nextStatus === 'delivered') {
-        const updatedOrder = updated.rows[0];
+      if (nextStatus === 'delivered' && updatedOrder) {
         const userContact = await fetchUserContact(updatedOrder.user_id);
         await sendOrderNotification({
           type: 'order_delivered',
@@ -897,10 +837,7 @@ function createApp() {
 
       return res.status(200).json({
         success: true,
-        data: {
-          id: orderId,
-          status: nextStatus
-        },
+        data: { id: orderId, status: nextStatus },
         requestId: req.requestId
       });
     } catch (error) {
@@ -913,6 +850,4 @@ function createApp() {
   return app;
 }
 
-module.exports = {
-  createApp
-};
+module.exports = { createApp };

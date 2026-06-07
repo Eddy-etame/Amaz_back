@@ -1,40 +1,40 @@
-const { getPostgresPool } = require('../../../../shared/db/postgres');
+const { getMysqlPool } = require('../../../../shared/db/mysql');
 
 async function isIpBlocked(ipAddress) {
-  const pool = getPostgresPool();
-  const result = await pool.query(
-    `SELECT 1 FROM blocked_ips WHERE ip_address = $1 LIMIT 1`,
+  const pool = getMysqlPool();
+  const [rows] = await pool.query(
+    `SELECT 1 FROM blocked_ips WHERE ip_address = ? LIMIT 1`,
     [String(ipAddress || '').trim()]
   );
-  return result.rowCount > 0;
+  return rows.length > 0;
 }
 
 async function addBlockedIp({ ipAddress, reason, blockedBy }) {
-  const pool = getPostgresPool();
+  const pool = getMysqlPool();
   await pool.query(
     `
       INSERT INTO blocked_ips (ip_address, reason, blocked_by)
-      VALUES ($1, $2, $3)
+      VALUES (?, ?, ?)
     `,
     [String(ipAddress || '').trim(), reason || null, blockedBy || null]
   );
 }
 
 async function removeBlockedIp(ipAddress) {
-  const pool = getPostgresPool();
-  const result = await pool.query(
-    `DELETE FROM blocked_ips WHERE ip_address = $1`,
+  const pool = getMysqlPool();
+  const [result] = await pool.query(
+    `DELETE FROM blocked_ips WHERE ip_address = ?`,
     [String(ipAddress || '').trim()]
   );
-  return result.rowCount > 0;
+  return result.affectedRows > 0;
 }
 
 async function listBlockedIps() {
-  const pool = getPostgresPool();
-  const result = await pool.query(
+  const pool = getMysqlPool();
+  const [rows] = await pool.query(
     `SELECT id, ip_address, reason, blocked_by, blocked_at FROM blocked_ips ORDER BY blocked_at DESC`
   );
-  return result.rows;
+  return rows;
 }
 
 module.exports = {

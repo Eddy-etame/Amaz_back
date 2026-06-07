@@ -1,4 +1,4 @@
-function notFoundHandler(req, res) {
+﻿function notFoundHandler(req, res) {
   res.status(404).json({
     success: false,
     error: {
@@ -12,16 +12,16 @@ function notFoundHandler(req, res) {
 function errorHandler(err, req, res, _next) {
   const status = err.status || 500;
   const code = err.code || 'INTERNAL_ERROR';
-  // PostgreSQL undefined_column — often stale DB vs code (run npm run db:bootstrap from Amaz_back)
+  // MySQL undefined_column â€” often stale DB vs code (run npm run db:bootstrap from Amaz_back)
   const pgMissingColumn = code === '42703';
   const colHint =
     pgMissingColumn && err.column ? ` (${String(err.column)})` : '';
   const message =
     status >= 500
       ? pgMissingColumn
-        ? `Schéma base de données incomplet (colonne manquante${colHint}). Si vous utilisez Docker: npm run db:bootstrap:docker. Sinon: npm run db:bootstrap (même Postgres que les conteneurs, ex. localhost:5432 → amaz-postgres).`
+        ? `SchÃ©ma base de donnÃ©es incomplet (colonne manquante${colHint}). Si vous utilisez Docker: npm run db:bootstrap:docker. Sinon: npm run db:bootstrap (mÃªme MySQL que les conteneurs, ex. localhost:5432 â†’ amaz-MySQL).`
         : 'Erreur interne'
-      : err.publicMessage || err.message || 'Erreur requête';
+      : err.publicMessage || err.message || 'Erreur requÃªte';
 
   if (status >= 500) {
     // eslint-disable-next-line no-console
@@ -42,3 +42,4 @@ module.exports = {
   notFoundHandler,
   errorHandler
 };
+

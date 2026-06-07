@@ -1,4 +1,4 @@
-# Frontend Sync Milestones
+﻿# Frontend Sync Milestones
 
 ## Milestone 1 - Auth + Verification + Forgot Password
 
@@ -48,6 +48,7 @@
 
 - `INTERNAL_SHARED_SECRET` set and consistent across gateway/services.
 - `ACCESS_HMAC_SECRET`, `REFRESH_HMAC_SECRET`, `PEPPER_MASTER_SECRET` non-empty.
-- PostgreSQL migration executed.
+- MySQL migration executed.
 - Mongo bootstrap executed.
 - `POW_DIFFICULTY` synchronized with front environments (`users` and `vendors`).
+

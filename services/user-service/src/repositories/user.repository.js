@@ -1,18 +1,16 @@
-const { getPostgresPool } = require('../../../../shared/db/postgres');
+const { getMysqlPool } = require('../../../../shared/db/mysql');
 
-/**
- * Load vendor approval when needed. Avoids referencing vendors.approval_status in the main query
- * so login/register for normal users works even if migration 005 was never applied on this DB
- * (e.g. host `db:bootstrap` hit a different Postgres than Docker).
- */
 async function attachVendorApprovalStatus(row) {
   if (!row || row.role !== 'vendor') return row;
-  const pool = getPostgresPool();
+  const pool = getMysqlPool();
   try {
-    const r = await pool.query(`SELECT approval_status FROM vendors WHERE id = $1 LIMIT 1`, [row.id]);
-    row.approval_status = r.rows[0]?.approval_status ?? null;
+    const [rows] = await pool.query(
+      `SELECT approval_status FROM vendors WHERE id = ? LIMIT 1`,
+      [row.id]
+    );
+    row.approval_status = rows[0]?.approval_status ?? null;
   } catch (err) {
-    if (err.code === '42703') {
+    if (err.code === 'ER_BAD_FIELD_ERROR') {
       row.approval_status = 'pending';
     } else {
       throw err;
@@ -22,8 +20,8 @@ async function attachVendorApprovalStatus(row) {
 }
 
 async function findUserByEmail(email) {
-  const pool = getPostgresPool();
-  const result = await pool.query(
+  const pool = getMysqlPool();
+  const [rows] = await pool.query(
     `
       SELECT
         u.id,
@@ -37,18 +35,17 @@ async function findUserByEmail(email) {
         c.password_salt
       FROM users u
       JOIN user_credentials c ON c.user_id = u.id
-      WHERE lower(u.email) = lower($1)
+      WHERE LOWER(u.email) = LOWER(?)
       LIMIT 1
     `,
     [email]
   );
-
-  return attachVendorApprovalStatus(result.rows[0] || null);
+  return attachVendorApprovalStatus(rows[0] || null);
 }
 
 async function findUserByPhone(phone) {
-  const pool = getPostgresPool();
-  const result = await pool.query(
+  const pool = getMysqlPool();
+  const [rows] = await pool.query(
     `
       SELECT
         u.id,
@@ -62,18 +59,17 @@ async function findUserByPhone(phone) {
         c.password_salt
       FROM users u
       JOIN user_credentials c ON c.user_id = u.id
-      WHERE u.phone = $1
+      WHERE u.phone = ?
       LIMIT 1
     `,
     [phone]
   );
-
-  return attachVendorApprovalStatus(result.rows[0] || null);
+  return attachVendorApprovalStatus(rows[0] || null);
 }
 
 async function findUserById(userId) {
-  const pool = getPostgresPool();
-  const result = await pool.query(
+  const pool = getMysqlPool();
+  const [rows] = await pool.query(
     `
       SELECT
         u.id,
@@ -84,163 +80,144 @@ async function findUserById(userId) {
         u.email_verified,
         u.sms_verified
       FROM users u
-      WHERE u.id = $1
+      WHERE u.id = ?
       LIMIT 1
     `,
     [userId]
   );
-  return attachVendorApprovalStatus(result.rows[0] || null);
+  return attachVendorApprovalStatus(rows[0] || null);
 }
 
 async function createUser({ userId, email, phone, username, role, passwordHash, passwordSalt }) {
-  const pool = getPostgresPool();
-  const client = await pool.connect();
+  const pool = getMysqlPool();
+  const connection = await pool.getConnection();
   try {
-    await client.query('BEGIN');
-    await client.query(
+    await connection.beginTransaction();
+    await connection.execute(
       `
         INSERT INTO users (id, email, phone, username, role, email_verified, sms_verified)
-        VALUES ($1, lower($2), $3, $4, $5, false, false)
+        VALUES (?, LOWER(?), ?, ?, ?, false, false)
       `,
       [userId, email, phone || null, username || null, role || 'user']
     );
-    await client.query(
+    await connection.execute(
       `
         INSERT INTO user_credentials (user_id, password_hash, password_salt, password_algo)
-        VALUES ($1, $2, $3, 'pbkdf2-sha256+pepper')
+        VALUES (?, ?, ?, 'pbkdf2-sha256+pepper')
       `,
       [userId, passwordHash, passwordSalt]
     );
-    await client.query('COMMIT');
+    await connection.commit();
   } catch (error) {
-    await client.query('ROLLBACK');
+    await connection.rollback();
     throw error;
   } finally {
-    client.release();
+    connection.release();
   }
 }
 
 async function createVendor({
-  userId,
-  email,
-  phone,
-  username,
-  passwordHash,
-  passwordSalt,
-  businessName,
-  siret,
-  address,
-  taxId,
-  iban
+  userId, email, phone, username, passwordHash, passwordSalt,
+  businessName, siret, address, taxId, iban
 }) {
-  const pool = getPostgresPool();
-  const client = await pool.connect();
+  const pool = getMysqlPool();
+  const connection = await pool.getConnection();
   try {
-    await client.query('BEGIN');
-    await client.query(
+    await connection.beginTransaction();
+    await connection.execute(
       `
-        INSERT INTO vendors (id, email, phone, username, role, email_verified, sms_verified, business_name, siret, address, tax_id, iban, approval_status)
-        VALUES ($1, lower($2), $3, $4, 'vendor', false, false, $5, $6, $7, $8, $9, 'pending')
+        INSERT INTO vendors (id, email, phone, username, role, email_verified, sms_verified,
+          business_name, siret, address, tax_id, iban, approval_status)
+        VALUES (?, LOWER(?), ?, ?, 'vendor', false, false, ?, ?, ?, ?, ?, 'pending')
       `,
-      [userId, email, phone || null, username || null, businessName || null, siret || null, address || null, taxId || null, iban || null]
+      [userId, email, phone || null, username || null,
+        businessName || null, siret || null, address || null, taxId || null, iban || null]
     );
-    await client.query(
+    await connection.execute(
       `
         INSERT INTO user_credentials (user_id, password_hash, password_salt, password_algo)
-        VALUES ($1, $2, $3, 'pbkdf2-sha256+pepper')
+        VALUES (?, ?, ?, 'pbkdf2-sha256+pepper')
       `,
       [userId, passwordHash, passwordSalt]
     );
-    await client.query('COMMIT');
+    await connection.commit();
   } catch (error) {
-    await client.query('ROLLBACK');
+    await connection.rollback();
     throw error;
   } finally {
-    client.release();
+    connection.release();
   }
 }
 
 async function updatePassword({ userId, passwordHash, passwordSalt }) {
-  const pool = getPostgresPool();
+  const pool = getMysqlPool();
   await pool.query(
     `
       UPDATE user_credentials
-      SET password_hash = $2,
-          password_salt = $3,
+      SET password_hash = ?,
+          password_salt = ?,
           updated_at = NOW()
-      WHERE user_id = $1
+      WHERE user_id = ?
     `,
-    [userId, passwordHash, passwordSalt]
+    [passwordHash, passwordSalt, userId]
   );
 }
 
 async function updateUserProfile({ userId, email, phone, username }) {
-  const pool = getPostgresPool();
-  const result = await pool.query(
+  const pool = getMysqlPool();
+  const [result] = await pool.query(
     `
       UPDATE users
-      SET email = lower($2),
-          phone = $3,
-          username = $4,
+      SET email = LOWER(?),
+          phone = ?,
+          username = ?,
           updated_at = NOW()
-      WHERE id = $1
-      RETURNING id
+      WHERE id = ?
     `,
-    [userId, email, phone || null, username || null]
+    [email, phone || null, username || null, userId]
   );
-
-  return result.rowCount > 0;
+  return result.affectedRows > 0;
 }
 
 async function markVerification({ userId, channel }) {
-  const pool = getPostgresPool();
+  const pool = getMysqlPool();
   if (channel === 'sms') {
-    await pool.query(`UPDATE users SET sms_verified = true, updated_at = NOW() WHERE id = $1`, [userId]);
-    await pool.query(`UPDATE vendors SET sms_verified = true, updated_at = NOW() WHERE id = $1`, [userId]);
+    await pool.query(`UPDATE users SET sms_verified = true, updated_at = NOW() WHERE id = ?`, [userId]);
+    await pool.query(`UPDATE vendors SET sms_verified = true, updated_at = NOW() WHERE id = ?`, [userId]);
     return;
   }
-  await pool.query(`UPDATE users SET email_verified = true, updated_at = NOW() WHERE id = $1`, [userId]);
-  await pool.query(`UPDATE vendors SET email_verified = true, updated_at = NOW() WHERE id = $1`, [userId]);
+  await pool.query(`UPDATE users SET email_verified = true, updated_at = NOW() WHERE id = ?`, [userId]);
+  await pool.query(`UPDATE vendors SET email_verified = true, updated_at = NOW() WHERE id = ?`, [userId]);
 }
 
 async function updateVendorApproval({ vendorId, approvalStatus, approvedBy }) {
-  const pool = getPostgresPool();
+  const pool = getMysqlPool();
   await pool.query(
     `
       UPDATE vendors
-      SET approval_status = $2,
-          approved_at = CASE WHEN $2 = 'approved' THEN NOW() ELSE approved_at END,
-          approved_by = CASE WHEN $2 = 'approved' THEN $3 ELSE NULL END,
+      SET approval_status = ?,
+          approved_at = CASE WHEN ? = 'approved' THEN NOW() ELSE approved_at END,
+          approved_by = CASE WHEN ? = 'approved' THEN ? ELSE NULL END,
           updated_at = NOW()
-      WHERE id = $1
+      WHERE id = ?
     `,
-    [vendorId, approvalStatus, approvedBy || null]
+    [approvalStatus, approvalStatus, approvalStatus, approvedBy || null, vendorId]
   );
 }
 
 async function insertSecurityEvent({
-  userId = null,
-  eventType,
-  severity = 'info',
-  requestId = null,
-  ipAddress = null,
-  fingerprintHash = null,
-  metadata = {}
+  userId = null, eventType, severity = 'info',
+  requestId = null, ipAddress = null,
+  fingerprintHash = null, metadata = {}
 }) {
-  const pool = getPostgresPool();
+  const pool = getMysqlPool();
   await pool.query(
     `
       INSERT INTO security_events (
-        id,
-        user_id,
-        event_type,
-        severity,
-        request_id,
-        ip_address,
-        fingerprint_hash,
-        metadata
+        id, user_id, event_type, severity,
+        request_id, ip_address, fingerprint_hash, metadata
       )
-      VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7::jsonb)
+      VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?)
     `,
     [userId, eventType, severity, requestId, ipAddress, fingerprintHash, JSON.stringify(metadata)]
   );
