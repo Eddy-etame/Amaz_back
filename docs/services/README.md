@@ -1,26 +1,27 @@
-# Amaz Backend Services Documentation
+# Documentation des services backend Amaz
 
-This directory contains per-service documentation for the Amaz microservices backend.
+Ce répertoire contient la documentation par service pour le backend microservices Amaz.
 
-## Services Overview
+## Vue d'ensemble des services
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| [Gateway](gateway.md) | 3000 | API entrypoint, PoW, rate limit, auth, proxy |
-| [User Service](user-service.md) | 3001 | Auth, users, addresses, notifications |
-| [Product Service](product-service.md) | 3002 | Products, stock, reserve/release |
-| [Order Service](order-service.md) | 3003 | Orders, checkout |
-| [Messaging Service](messaging-service.md) | 3004 | User-vendor messaging, Socket.IO |
-| [AI Service](ai-service.md) | 3005 | AI recommendations, bot auth |
-| [Pepper Service](pepper-service.md) | 3006 | Password/token peppering (HMAC) |
-| [Admin Service](admin-service.md) | 3010 | AdminJS back-office (PostgreSQL) |
+| Service | Port | Rôle |
+|---------|------|------|
+| [Gateway](gateway.md) | 3000 | Point d'entrée API, PoW, rate limit, authentification, proxy |
+| [User Service](user-service.md) | 3001 | Authentification, utilisateurs, adresses, notifications |
+| [Product Service](product-service.md) | 3002 | Produits, stock, réservation/libération |
+| [Order Service](order-service.md) | 3003 | Commandes, checkout |
+| [Messaging Service](messaging-service.md) | 3004 | Messagerie acheteur-vendeur, Socket.IO |
+| [Returns Service](returns-service.md) | 3008 | Flux de retours avec portée vendeur/acheteur |
+| [AI Service](ai-service.md) | 3005 | Recommandations IA, authentification bot |
+| [Pepper Service](pepper-service.md) | 3006 | Peppering de mots de passe/tokens (HMAC) |
+| [Admin Service](admin-service.md) | 3010 | Back-office AdminJS (PostgreSQL) |
 
-## Generating PDFs
+## Génération des PDFs
 
-Run from `Amaz_back`:
+Depuis `Amaz_back` :
 
 ```bash
 npm run docs:pdf
 ```
 
-Output: **`docs/pdf/*.pdf`** at the **repository root** (sibling of `Amaz_back/`). See [`docs/pdf/README.md`](../../../docs/pdf/README.md).
+Sortie : **`docs/pdf/*.pdf`** à la **racine du dépôt** (au même niveau que `Amaz_back/`). Voir [`docs/pdf/README.md`](../../../docs/pdf/README.md).

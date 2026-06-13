@@ -1,3 +1,11 @@
+// Validation des entrées au niveau de la gateway.
+//
+// On vérifie la FORME des corps de requête avant de proxifier vers les services
+// (champs obligatoires, email valide, mot de passe assez long…). Ça arrête tôt les
+// requêtes manifestement invalides et donne un 400 clair, sans déranger le service.
+// Les services refont leurs propres contrôles métier : ceci est un premier filtre.
+
+// Retire le préfixe `/api/v1` pour comparer des chemins courts ("/auth/login", etc.).
 function normalizeApiPath(rawPath) {
   const path = String(rawPath || '').split('?')[0] || '/';
   if (!path.startsWith('/api/v1')) {
@@ -10,10 +18,12 @@ function hasNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+// Validation d'email volontairement simple (présence d'un @ et d'un domaine).
 function hasValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 }
 
+// Canal OTP autorisé.
 function hasOtpChannel(value) {
   return value === 'email' || value === 'sms';
 }
@@ -35,6 +45,7 @@ function createGatewayValidationMiddleware() {
     const path = normalizeApiPath(req.path || req.originalUrl || '/');
     const body = req.body || {};
 
+    // Inscription : email valide + mot de passe d'au moins 8 caractères.
     if (method === 'POST' && (path === '/auth/register' || path === '/auth/signup')) {
       if (!hasValidEmail(body.email) || !hasNonEmptyString(body.password) || String(body.password).length < 8) {
         return createValidationResponse(res, req.requestId, 'email valide et password >= 8 requis');
@@ -59,6 +70,7 @@ function createGatewayValidationMiddleware() {
       }
     }
 
+    // Démarrage OTP : un canal valide + au moins un identifiant (id, email ou téléphone).
     if (method === 'POST' && path === '/auth/verification/start') {
       const hasIdentity = hasNonEmptyString(body.userId) || hasValidEmail(body.email) || hasNonEmptyString(body.phone);
       if (!hasOtpChannel(body.channel) || !hasIdentity) {
@@ -96,6 +108,7 @@ function createGatewayValidationMiddleware() {
       }
     }
 
+    // Commande : on accepte `items` (EN) ou `articles` (FR), mais la liste ne doit pas être vide.
     if (method === 'POST' && path === '/commandes') {
       const items = Array.isArray(body.items) ? body.items : body.articles;
       if (!Array.isArray(items) || items.length === 0) {
@@ -112,6 +125,7 @@ function createGatewayValidationMiddleware() {
       }
     }
 
+    // Message : on accepte `content` (EN) ou `contenu` (FR).
     if (method === 'POST' && path === '/messages') {
       const content = body.content || body.contenu;
       if (!hasNonEmptyString(content)) {

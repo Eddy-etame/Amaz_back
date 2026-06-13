@@ -15,6 +15,7 @@
     "start:product": "npm --workspace product-service run start",
     "start:order": "npm --workspace order-service run start",
     "start:messaging": "npm --workspace messaging-service run start",
+    "start:returns": "npm --workspace returns-service run start",
     "start:ai": "npm --workspace ai-service run start",
     "start:pepper": "npm --workspace pepper-service run start",
     "start:admin": "npm --workspace admin-service run start",

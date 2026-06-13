@@ -65,6 +65,8 @@ function startHealthMonitor(services) {
 
 function isServiceHealthy(serviceName) {
   const status = serviceStatus.get(serviceName);
+  // Choix optimiste : tant qu'on n'a pas encore vérifié un service (au tout début),
+  // on le considère "sain" pour ne pas bloquer le trafic avant le premier check.
   if (!status) return true;
   return status.ok === true;
 }

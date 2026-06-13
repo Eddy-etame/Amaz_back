@@ -1,56 +1,55 @@
-# Admin operations runbook
+# Runbook d'administration
 
-## Source of truth (recommended)
+## Source de vérité (recommandé)
 
-| Action | Preferred path | Audit |
-|--------|----------------|--------|
-| **Approve / reject vendor** | AdminJS record actions **Approve vendor** / **Reject vendor** (calls user-service internally) | Rows in `security_events` (`admin.vendor_approved` / `admin.vendor_rejected`) |
-| **Approve / reject vendor (API)** | Gateway: `PATCH /api/v1/auth/admin/vendors/:id/approve` or `.../reject` with admin JWT | Same `security_events` |
-| **IP blocklist** | Gateway admin API or AdminJS on `blocked_ips` | Prefer API for consistent `security_events`; raw AdminJS edits may skip some metadata |
-| **Order / order_items** | AdminJS **read-first**; avoid manual status edits that contradict `order-service` business rules | Use support playbooks |
+| Action | Chemin privilégié | Audit |
+|--------|-------------------|-------|
+| **Approuver / rejeter un vendeur** | Actions AdminJS **Approve vendor** / **Reject vendor** (appelle le user-service en interne) | Lignes dans `security_events` (`admin.vendor_approved` / `admin.vendor_rejected`) |
+| **Approuver / rejeter un vendeur (API)** | Gateway : `PATCH /api/v1/auth/admin/vendors/:id/approve` ou `.../reject` avec un token admin (Bearer HMAC) | Même `security_events` |
+| **Liste de blocage IP** | API admin de la gateway ou AdminJS sur `blocked_ips` | Privilégier l'API pour des `security_events` cohérents ; les modifications brutes via AdminJS peuvent omettre certaines métadonnées |
+| **Commandes / order_items** | AdminJS en **lecture d'abord** ; éviter les modifications manuelles de statut qui contredisent les règles métier de l'order-service | Utiliser les procédures de support |
 
-Internal routes (machine-only, signed `x-internal-*`): `PATCH /internal/admin/vendors/:vendorId/approve` and `.../reject` with JSON body `{ "actorEmail": "<admin email>" }`. Caller must be **`admin-service`**. Used by AdminJS actions so the logged-in admin email is tied to audit.
+Routes internes (machine uniquement, signées `x-internal-*`) : `PATCH /internal/admin/vendors/:vendorId/approve` et `.../reject` avec le corps JSON `{ "actorEmail": "<email admin>" }`. L'appelant doit être **`admin-service`**. Utilisé par les actions AdminJS pour que l'email de l'admin connecté soit associé à l'audit.
 
-## Security hardening (AdminJS)
+## Durcissement sécurité (AdminJS)
 
-- Session: set a strong **`ADMIN_SESSION_SECRET`** in every non-dev environment; cookie **`secure: true`** when served over HTTPS.
-- **Do not** expose port **3010** on the public internet without TLS and network restrictions (VPN, allowlist, or private subnet).
-- **Sessions** resource in AdminJS hides **access_token_hash** and **refresh_token_hash** from list/show/edit (tokens remain in DB; UI does not surface hashes).
+- Session : définir un **`ADMIN_SESSION_SECRET`** fort dans tout environnement hors dev ; cookie **`secure: true`** quand le service est servi en HTTPS.
+- **Ne pas** exposer le port **3010** sur l'internet public sans TLS et restrictions réseau (VPN, liste blanche, ou sous-réseau privé).
+- La ressource **Sessions** dans AdminJS masque **access_token_hash** et **refresh_token_hash** de la liste/affichage/édition (les tokens restent en base ; l'UI ne montre pas les hashes).
 
-## Two admin surfaces
+## Deux surfaces d'administration
 
-| Surface | URL / access | Use for |
-|--------|----------------|---------|
-| **AdminJS** | `http://localhost:3010/admin` (default) | Fast CRUD on **PostgreSQL** tables (users, vendors, orders, sessions, `security_events`, `blocked_ips`, …). Optional **read-only** MongoDB `products` when `MONGO_URI` is set. |
-| **REST (user-service)** | Via gateway: `GET/POST/DELETE /api/v1/auth/admin/...` with **admin** JWT | Vendor approve/reject, IP blocklist; responses align with app API conventions. |
-| **Angular `admin` app** | Separate SPA (repo `Rep_Amazon-Admin`) | Landing page with links to AdminJS, gateway health, and this runbook—not a second CRUD source of truth. |
+| Surface | URL / accès | Usage |
+|---------|-------------|-------|
+| **AdminJS** | `http://localhost:3010/admin` (par défaut) | CRUD rapide sur les tables **PostgreSQL** (users, vendors, orders, sessions, `security_events`, `blocked_ips`, etc.). Catalogue **MongoDB** en lecture seule optionnel quand `MONGO_URI` est défini. |
+| **REST (user-service)** | Via gateway : `GET/POST/DELETE /api/v1/auth/admin/...` avec un token **admin** (Bearer HMAC) | Approbation/rejet vendeur, liste de blocage IP ; les réponses respectent les conventions API de l'application. |
 
-**Source of truth:** Prefer **AdminJS actions** or **gateway admin API** for vendor approval so `security_events` stays consistent. Raw edits to `vendors.approval_status` in AdminJS are possible but **not recommended** for production governance.
+**Source de vérité :** Privilégier les **actions AdminJS** ou l'**API admin de la gateway** pour l'approbation des vendeurs afin que `security_events` reste cohérent. Les modifications directes de `vendors.approval_status` dans AdminJS sont possibles mais **non recommandées** pour la gouvernance en production.
 
-## Environment (admin-service)
+## Environnement (admin-service)
 
-- `INTERNAL_SHARED_SECRET` — must match user-service (internal caller `admin-service`).
-- `USER_SERVICE_URL` — e.g. `http://localhost:3001` for `/internal/admin/authenticate`.
-- `PG_*` or `DATABASE_URL` — same Postgres as the platform (sessions table `admin_session` is created by `connect-pg-simple` if missing).
-- `ADMIN_SESSION_SECRET` — strong random string for Express session signing (set in production).
+- `INTERNAL_SHARED_SECRET` — doit correspondre au user-service (appelant interne `admin-service`).
+- `USER_SERVICE_URL` — ex. `http://localhost:3001` pour `/internal/admin/authenticate`.
+- `PG_*` ou `DATABASE_URL` — même Postgres que la plateforme (la table de session `admin_session` est créée par `connect-pg-simple` si absente).
+- `ADMIN_SESSION_SECRET` — chaîne aléatoire forte pour la signature de session Express (obligatoire en production).
 
-## Hardening (production)
+## Durcissement (production)
 
-- Bind AdminJS to **internal network** only or put behind VPN; do not expose `3010` on the public internet without TLS + auth.
-- Rotate `ADMIN_SESSION_SECRET` and admin passwords periodically.
-- Consider an **IP allowlist** at the load balancer for `/admin`.
-- Use **2FA** for admin accounts (not bundled; integrate via IdP or reverse proxy if required).
+- Lier AdminJS au **réseau interne** uniquement ou le placer derrière un VPN ; ne pas exposer le port `3010` sur l'internet public sans TLS + authentification.
+- Faire tourner régulièrement `ADMIN_SESSION_SECRET` et les mots de passe admin.
+- Envisager une **liste blanche IP** au niveau du load balancer pour `/admin`.
+- Utiliser la **2FA** pour les comptes admin (non inclus ; à intégrer via un IdP ou un reverse proxy si nécessaire).
 
-## MongoDB catalog in AdminJS (optional)
+## Catalogue MongoDB dans AdminJS (optionnel)
 
-When **`MONGO_URI`** (and optionally **`MONGO_DB_NAME`**) is set in `.env`, `admin-service` registers a **read-only** resource **Catalog (Mongo, read-only)** on the `products` collection (`@adminjs/mongoose` + flexible schema). Create/edit/delete actions are disabled. Operational catalog changes should still go through **product-service** with audit logs in production.
+Quand **`MONGO_URI`** (et éventuellement **`MONGO_DB_NAME`**) est défini dans `.env`, l'`admin-service` enregistre une ressource **en lecture seule** **Catalogue (Mongo, lecture seule)** sur la collection `products` (`@adminjs/mongoose` + schéma flexible). Les actions créer/modifier/supprimer sont désactivées. Les modifications opérationnelles du catalogue doivent passer par le **product-service** avec des logs d'audit en production.
 
-## Blocking IPs
+## Blocage d'adresses IP
 
-- **Runtime enforcement:** gateway reads `blocked_ips` (Postgres) with a short TTL cache.
-- **Management:** `POST/GET/DELETE /api/v1/auth/admin/ip-blocklist` (admin JWT) or edit `blocked_ips` in AdminJS (ensure gateway cache TTL allows timely unblock).
+- **Application à l'exécution :** la gateway lit `blocked_ips` (Postgres) avec un cache à TTL court.
+- **Gestion :** `POST/GET/DELETE /api/v1/auth/admin/ip-blocklist` (token admin HMAC) ou modifier `blocked_ips` dans AdminJS (s'assurer que le TTL du cache de la gateway permet un déblocage rapide).
 
-## References
+## Références
 
-- Seed admin: `db/postgres/seed.js` (`admin@amaz.local` in dev).
-- User-service internal: `POST /internal/admin/authenticate` (used by AdminJS login).
+- Admin de seed : `db/postgres/seed.js` (`admin@amaz.local` en dev).
+- Route interne user-service : `POST /internal/admin/authenticate` (utilisée par la connexion AdminJS).

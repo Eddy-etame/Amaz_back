@@ -1,50 +1,50 @@
-# Local verification (Amaz_back)
+# Vérification locale (Amaz_back)
 
-## Prerequisites
+## Prérequis
 
-1. **PostgreSQL + MongoDB** running (`docker compose up -d` from `Amaz_back`).
-2. **Migrations + seed**: `npm run db:bootstrap` (uses `PG_*` from `.env` — must match services).
-3. **Full API stack** on localhost ports **3000–3006** (e.g. `docker compose -f docker-compose.full.yml up -d --build`).
-4. **`.env`** in `Amaz_back` with secrets documented in [README.md](../README.md).
+1. **PostgreSQL + MongoDB** en cours d'exécution (`docker compose up -d` depuis `Amaz_back`).
+2. **Migrations + seed** : `npm run db:bootstrap` (utilise `PG_*` depuis `.env` — doit correspondre aux services).
+3. **Stack API complète** sur les ports localhost **3000–3008** (ex. `docker compose -f docker-compose.full.yml up -d --build`).
+4. **`.env`** dans `Amaz_back` avec les secrets documentés dans [README.md](../README.md).
 
-## One-shot backend check
+## Vérification backend en une commande
 
-From `Amaz_back`:
+Depuis `Amaz_back` :
 
 ```bash
 npm run verify:local
 ```
 
-This runs in order:
+Cela exécute dans l'ordre :
 
-1. `npm test` — static structure / wiring smoke (no network).
-2. `npm run test:contract-smoke` — per-service health + minimal PoW contract via gateway.
-3. `npm run qa:campaign` — `/health` on gateway and each service port.
-4. `npm run test:gateway-suite` — PoW + register/login + produits + commandes + wishlist + AI + messages + bot auth.
-5. `npm run test:e2e-auth` — login + `/auth/me` with seeded-style credentials.
+1. `npm test` — tests statiques de structure / câblage (pas de réseau).
+2. `npm run test:contract-smoke` — santé par service + contrat PoW minimal via la gateway.
+3. `npm run qa:campaign` — `/health` sur la gateway et chaque port de service.
+4. `npm run test:gateway-suite` — PoW + register/login + produits + commandes + wishlist + IA + messages + bot auth.
+5. `npm run test:e2e-auth` — login + `/auth/me` avec des identifiants de type seed.
 
-**Failures:** If step 2+ fail with connection errors, the stack is not up or ports are wrong. If auth fails with `42703`, run `npm run db:bootstrap` against the same database the user-service uses.
+**Échecs :** Si les étapes 2+ échouent avec des erreurs de connexion, la stack n'est pas démarrée ou les ports sont incorrects. Si l'auth échoue avec `42703`, exécuter `npm run db:bootstrap` contre la même base de données que celle utilisée par le user-service.
 
-## Skip steps (CI or partial runs)
+## Sauter des étapes (CI ou exécutions partielles)
 
-| Variable | Effect |
-|----------|--------|
-| `VERIFY_SKIP_SMOKE=1` | Skip static `npm test` |
-| `VERIFY_SKIP_CONTRACT=1` | Skip contract smoke |
-| `VERIFY_SKIP_HEALTH=1` | Skip QA health campaign |
-| `VERIFY_SKIP_GATEWAY=1` | Skip gateway API suite |
-| `VERIFY_SKIP_E2E_AUTH=1` | Skip e2e auth |
-| `VERIFY_NETWORK_ONLY=1` | Only network steps (skip static smoke) |
+| Variable | Effet |
+|----------|-------|
+| `VERIFY_SKIP_SMOKE=1` | Sauter le `npm test` statique |
+| `VERIFY_SKIP_CONTRACT=1` | Sauter le smoke de contrat |
+| `VERIFY_SKIP_HEALTH=1` | Sauter la campagne de santé QA |
+| `VERIFY_SKIP_GATEWAY=1` | Sauter la suite API gateway |
+| `VERIFY_SKIP_E2E_AUTH=1` | Sauter l'auth e2e |
+| `VERIFY_NETWORK_ONLY=1` | Uniquement les étapes réseau (sauter le smoke statique) |
 
-Example: static smoke only (no Docker):
+Exemple : smoke statique uniquement (pas de Docker) :
 
 ```bash
 VERIFY_SKIP_CONTRACT=1 VERIFY_SKIP_HEALTH=1 VERIFY_SKIP_GATEWAY=1 VERIFY_SKIP_E2E_AUTH=1 npm run verify:local
 ```
 
-## Frontend builds (separate)
+## Builds frontend (séparés)
 
-Angular apps are not run by `verify:local`. After backend is green (from repo root, adjust paths if your layout differs):
+Les applications Angular ne sont pas exécutées par `verify:local`. Après que le backend est au vert (depuis la racine du dépôt) :
 
 ```bash
 cd users && npx ng build
@@ -52,34 +52,34 @@ cd ../vendors && npx ng build
 cd ../qa-lab && npx ng build
 ```
 
-From `Amaz_back` you can use `cd ../users && npx ng build` if `users` sits next to `Amaz_back`.
+Depuis `Amaz_back` on peut utiliser `cd ../users && npx ng build` si `users` se trouve à côté de `Amaz_back`.
 
-**Unit tests (users):**
+**Tests unitaires (users) :**
 
-- `cd users && npx ng test` — Karma/Jasmine (may open a browser unless configured headless).
-- `cd users && npm run test:unit` — Vitest for pure utils / `ShareService.absoluteUrl` (headless).
+- `cd users && npx ng test` — Karma/Jasmine (peut ouvrir un navigateur sauf si configuré en headless).
+- `cd users && npm run test:unit` — Vitest pour les utilitaires purs / `ShareService.absoluteUrl` (headless).
 
-## PWA (users storefront)
+## PWA (vitrine users)
 
-The `users` app ships a **Web App Manifest** only (`manifest.webmanifest`): installable shortcut name, theme colors, `start_url`. There is **no service worker** and **no caching of API responses** by design (avoids stale cart, stock, and prices during demos). Adding a SW later would require an explicit cache strategy documented here.
+L'application `users` embarque uniquement un **Web App Manifest** (`manifest.webmanifest`) : nom de raccourci installable, couleurs du thème, `start_url`. Il n'y a **pas de service worker** et **pas de mise en cache des réponses API** par conception (évite le panier, stock et prix périmés pendant les démonstrations). Ajouter un SW plus tard nécessiterait une stratégie de cache explicite documentée ici.
 
 ## PoW
 
-All gateway calls from `users` continue to use the existing **Proof-of-Work** headers via `securityHeadersInterceptor`; verification scripts (`test:gateway-suite`, `test:contract-smoke`) exercise that contract.
+Tous les appels gateway depuis `users` continuent d'utiliser les en-têtes **Proof-of-Work** existants via `securityHeadersInterceptor` ; les scripts de vérification (`test:gateway-suite`, `test:contract-smoke`) exercent ce contrat.
 
-## Catalog, PLP filters, and search suggestions (manual)
+## Catalogue, filtres PLP et suggestions de recherche (manuel)
 
-After Mongo is up:
+Après le démarrage de Mongo :
 
-1. **Reseed catalog** (from `Amaz_back`): `npm run db:mongo:init`  
-   - Expect **more than 400** products total (legacy + generated).
+1. **Re-seeder le catalogue** (depuis `Amaz_back`) : `npm run db:mongo:init`
+   - On s'attend à **plus de 400** produits au total (legacy + générés).
 
-2. **API smoke** (with gateway + PoW as in `test:gateway-suite`, or authenticated as your env requires):  
-   - `GET /api/v1/produits?limit=500` — `data.pagination.total` should be **> 400** after reseed.  
-   - `GET /api/v1/produits/suggest?q=bu&limit=8` — non-empty `data.items` when the catalog matches; each item should include image and price fields.
+2. **Smoke API** (avec gateway + PoW comme dans `test:gateway-suite`, ou authentifié selon l'environnement) :
+   - `GET /api/v1/produits?limit=500` — `data.pagination.total` devrait être **> 400** après le reseed.
+   - `GET /api/v1/produits/suggest?q=bu&limit=8` — `data.items` non vide quand le catalogue matche ; chaque élément devrait inclure les champs image et prix.
 
-3. **users storefront** (`cd ../users && npx ng serve` or your usual command):  
-   - **PLP:** Set prix min (e.g. 100), click **Appliquer** — no product below min; URL contains `minPrix` (and `maxPrix` if set). Refresh keeps filters.  
-   - **Search bar:** Type at least 2 characters — dropdown shows **thumbnail + title + price** (server suggest when online; falls back to in-memory catalog if the request fails).
+3. **Vitrine users** (`cd ../users && npx ng serve` ou la commande habituelle) :
+   - **PLP :** Définir un prix min (ex. 100), cliquer **Appliquer** — aucun produit en dessous du min ; l'URL contient `minPrix` (et `maxPrix` si défini). Le rafraîchissement conserve les filtres.
+   - **Barre de recherche :** Taper au moins 2 caractères — le menu déroulant affiche **miniature + titre + prix** (suggestion serveur quand en ligne ; repli sur le catalogue en mémoire si la requête échoue).
 
-See also [MICROSERVICES_FRONTEND_MAP.md](./MICROSERVICES_FRONTEND_MAP.md) for how services map to Angular.
+Voir aussi [MICROSERVICES_FRONTEND_MAP.md](./MICROSERVICES_FRONTEND_MAP.md) pour le mapping services → Angular.

@@ -1,3 +1,7 @@
+// Assemblage de la gateway : c'est ici qu'on monte, DANS L'ORDRE, la chaîne de
+// sécurité (VPN, IP bloquées, PoW, rate-limit, validation, auth) puis les blocs de
+// routes par domaine qui proxifient vers le bon microservice. L'ordre des `app.use`
+// est important : un middleware monté plus haut s'exécute avant.
 const express = require('express');
 const { requestIdMiddleware } = require('../../shared/middleware/request-id');
 const { createPowMiddleware } = require('../../shared/middleware/pow-required');
@@ -11,6 +15,8 @@ const { createGatewayValidationMiddleware } = require('./middlewares/input-valid
 const { forwardToService } = require('./proxy');
 const { startHealthMonitor, isServiceHealthy, getAllStatus } = require('./health-monitor');
 
+// Routes d'auth accessibles SANS être déjà connecté (on ne peut pas exiger un token
+// pour se connecter ou s'inscrire). Tout le reste de /auth exige un Bearer valide.
 const AUTH_PUBLIC_PATHS = new Set([
   '/login',
   '/register',
@@ -23,6 +29,10 @@ const AUTH_PUBLIC_PATHS = new Set([
   '/refresh'
 ]);
 
+// --- Helpers de réécriture de chemin ---------------------------------------
+// Le front appelle `/api/v1/...` mais les services montent leurs routes sans ce
+// préfixe (ex. `/commandes`). Ces helpers retirent `/api/v1`, gèrent le sous-préfixe
+// `/auth`, et traduisent les alias anglais vers le français (`/orders` -> `/commandes`).
 function splitPathAndQuery(rawUrl) {
   const [pathOnly, query = ''] = String(rawUrl || '/').split('?');
   return {
@@ -100,6 +110,7 @@ function buildServiceNameMap() {
   if (s.product) SERVICE_NAME_BY_URL[s.product.replace(/\/+$/, '')] = 'product';
   if (s.order) SERVICE_NAME_BY_URL[s.order.replace(/\/+$/, '')] = 'order';
   if (s.messaging) SERVICE_NAME_BY_URL[s.messaging.replace(/\/+$/, '')] = 'messaging';
+  if (s.returns) SERVICE_NAME_BY_URL[s.returns.replace(/\/+$/, '')] = 'returns';
   if (s.ai) SERVICE_NAME_BY_URL[s.ai.replace(/\/+$/, '')] = 'ai';
   if (s.pepper) SERVICE_NAME_BY_URL[s.pepper.replace(/\/+$/, '')] = 'pepper';
   if (s.pepperPrimary) SERVICE_NAME_BY_URL[s.pepperPrimary.replace(/\/+$/, '')] = 'pepperPrimary';
@@ -108,6 +119,8 @@ function buildServiceNameMap() {
 async function forwardProxy({ req, res, serviceBaseUrl, targetPath, internalSecret, serviceName }) {
   const base = String(serviceBaseUrl || '').replace(/\/+$/, '');
   const name = serviceName || SERVICE_NAME_BY_URL[base];
+  // Court-circuit : si le moniteur de santé sait déjà le service down, on répond un
+  // 503 clair tout de suite plutôt que d'attendre un timeout d'appel.
   if (name && !isServiceHealthy(name)) {
     return res.status(503).json({
       success: false,
@@ -155,6 +168,8 @@ function corsMiddleware(req, res, next) {
 function createApp() {
   buildServiceNameMap();
   const app = express();
+  // Tout en haut : on refuse les origines interdites (VPN, IP bloquées) avant même
+  // de lire le corps de la requête. Inutile de travailler pour un appelant banni.
   app.use(verifierVPN);
   app.use(createBlockedIpMiddleware());
   const inputValidationMiddleware = createGatewayValidationMiddleware();
@@ -226,6 +241,9 @@ function createApp() {
     });
   });
 
+  // Barrière commune à TOUTES les routes /api/v1, dans l'ordre : preuve de travail,
+  // puis limitation de débit, puis validation des entrées. Ces trois filtres passent
+  // avant n'importe quelle route métier ci-dessous.
   app.use(
     '/api/v1',
     createPowMiddleware({
@@ -242,6 +260,9 @@ function createApp() {
   );
   app.use('/api/v1', inputValidationMiddleware);
 
+  // Bloc d'auth. Schéma répété pour chaque domaine ci-dessous : on (éventuellement)
+  // exige le Bearer, puis on proxifie vers le service en réécrivant le chemin. Ici,
+  // les routes publiques (login/register/…) passent sans token ; les autres l'exigent.
   app.use('/api/v1/auth', async (req, res, next) => {
     const path = req.path || '/';
     const needsAuth = !AUTH_PUBLIC_PATHS.has(path);
@@ -284,6 +305,8 @@ function createApp() {
     }
   });
 
+  // Wishlist partagée : volontairement PUBLIQUE (un lien de partage doit s'ouvrir
+  // sans compte), mais en lecture seule -> seul GET est autorisé.
   app.use('/api/v1/wishlists/shared', async (req, res, next) => {
     try {
       if (req.method !== 'GET') {
@@ -323,6 +346,8 @@ function createApp() {
     }
   });
 
+  // Catalogue : la lecture (GET) est publique mais avec auth FACULTATIVE (si l'on est
+  // connecté on pourra personnaliser) ; toute écriture (POST/PUT/DELETE) exige un token.
   app.use('/api/v1/produits', async (req, res, next) => {
     try {
       if (req.method !== 'GET') {
@@ -355,6 +380,7 @@ function createApp() {
     }
   });
 
+  // Alias anglais `/products` -> on réécrit vers `/produits` puis même logique.
   app.use('/api/v1/products', async (req, res, next) => {
     try {
       const targetPath = mapAlias(normalizeDownstreamPath(req.originalUrl), '/products', '/produits');
@@ -440,6 +466,41 @@ function createApp() {
     }
   });
 
+  app.use('/api/v1/retours', async (req, res, next) => {
+    try {
+      await authMiddleware(req, res, async () => {
+        await forwardProxy({
+          req,
+          res,
+          serviceBaseUrl: config.services.returns,
+          targetPath: normalizeDownstreamPath(req.originalUrl),
+          internalSecret: config.internalSharedSecret,
+          serviceName: 'returns'
+        });
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.use('/api/v1/returns', async (req, res, next) => {
+    try {
+      const targetPath = mapAlias(normalizeDownstreamPath(req.originalUrl), '/returns', '/retours');
+      await authMiddleware(req, res, async () => {
+        await forwardProxy({
+          req,
+          res,
+          serviceBaseUrl: config.services.returns,
+          targetPath,
+          internalSecret: config.internalSharedSecret,
+          serviceName: 'returns'
+        });
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use('/api/v1/ai', async (req, res, next) => {
     try {
       await authMiddleware(req, res, async () => {
@@ -457,6 +518,8 @@ function createApp() {
     }
   });
 
+  // Bot : POST /bot/auth (scoring de risque d'auth) est volontairement PoW-only,
+  // sans Bearer (le contrat l'autorise) ; les autres routes bot exigent l'auth.
   app.use('/api/v1/bot', async (req, res, next) => {
     const proxyCall = async () =>
       forwardProxy({

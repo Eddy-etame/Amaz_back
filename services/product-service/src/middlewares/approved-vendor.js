@@ -1,9 +1,16 @@
+// Middleware "vendeur approuvé" : protège les écritures du catalogue.
+//
+// Règle métier : un vendeur ne peut publier/modifier des produits QUE si un admin a
+// approuvé son compte. Détail intéressant à expliquer en soutenance : le product-service
+// stocke le catalogue dans MongoDB, mais l'état d'approbation du vendeur, lui, vit dans
+// PostgreSQL (table `vendors`). Ce middleware franchit donc volontairement la frontière
+// entre les deux bases : la donnée "métier transactionnelle" (le statut vendeur) reste
+// en SQL, le catalogue (flexible, volumineux) reste en NoSQL.
+
 const { getPostgresPool } = require('../../../../shared/db/postgres');
 
-/**
- * After requireVendorRole: admins pass; vendors must have approval_status = 'approved' in Postgres.
- */
 async function requireApprovedVendor(req, res, next) {
+  // Un admin passe toujours (il gère le catalogue sans être un vendeur approuvé).
   const role = String(req.headers['x-auth-role'] || '').trim();
   if (role === 'admin') {
     return next();
@@ -22,6 +29,7 @@ async function requireApprovedVendor(req, res, next) {
   }
 
   try {
+    // On va chercher le statut d'approbation dans Postgres (source de vérité vendeur).
     const pool = getPostgresPool();
     const result = await pool.query(
       `SELECT approval_status FROM vendors WHERE id = $1 LIMIT 1`,
@@ -29,6 +37,7 @@ async function requireApprovedVendor(req, res, next) {
     );
     const row = result.rows[0];
     if (!row) {
+      // Pas de profil vendeur => pas le droit de toucher au catalogue.
       return res.status(403).json({
         success: false,
         error: {
@@ -38,6 +47,7 @@ async function requireApprovedVendor(req, res, next) {
         requestId: req.requestId
       });
     }
+    // Tout statut autre que 'approved' (pending / rejected) bloque, avec un code adapté.
     if (row.approval_status !== 'approved') {
       return res.status(403).json({
         success: false,

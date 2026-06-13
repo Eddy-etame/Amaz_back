@@ -5,16 +5,15 @@ function parseOrigins(raw) {
     .filter(Boolean);
 }
 
-/** Browsers treat localhost vs 127.0.0.1 as different origins; Angular dev server may use either. */
+// En dev, on autorise les trois apps Angular : 4200 (users), 4201 (vendors), 4202 (qa-lab).
+// On liste localhost ET 127.0.0.1 car le navigateur les considère comme deux origines différentes.
 const DEV_CORS_DEFAULTS = [
   'http://localhost:4200',
   'http://localhost:4201',
   'http://localhost:4202',
-  'http://localhost:4203',
   'http://127.0.0.1:4200',
   'http://127.0.0.1:4201',
-  'http://127.0.0.1:4202',
-  'http://127.0.0.1:4203'
+  'http://127.0.0.1:4202'
 ];
 
 function mergeAllowedOrigins() {
@@ -66,6 +65,7 @@ const config = {
     product: normalizeMicroserviceBaseUrl(process.env.PRODUCTS_SERVICE_URL || 'http://localhost:3002'),
     order: normalizeMicroserviceBaseUrl(process.env.ORDERS_SERVICE_URL || 'http://localhost:3003'),
     messaging: normalizeMicroserviceBaseUrl(process.env.MESSAGING_SERVICE_URL || 'http://localhost:3004'),
+    returns: normalizeMicroserviceBaseUrl(process.env.RETURNS_SERVICE_URL || 'http://localhost:3008'),
     ai: normalizeMicroserviceBaseUrl(process.env.AI_SERVICE_URL || 'http://localhost:3005'),
     pepper: normalizeMicroserviceBaseUrl(process.env.PEPPER_SERVICE_URL || 'http://localhost:3006'),
     pepperPrimary: normalizeMicroserviceBaseUrl(process.env.PEPPER_PRIMARY_URL || 'http://localhost:3007')

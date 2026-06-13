@@ -1,3 +1,9 @@
+// Gestion centralisée des erreurs (à monter EN DERNIER dans la chaîne Express).
+//
+// `notFoundHandler` répond pour toute route non reconnue ; `errorHandler` attrape les
+// erreurs remontées par `next(err)`. On masque les détails internes au client (pour
+// les 5xx on dit juste "Erreur interne") mais on les journalise côté serveur.
+
 function notFoundHandler(req, res) {
   res.status(404).json({
     success: false,
@@ -12,7 +18,9 @@ function notFoundHandler(req, res) {
 function errorHandler(err, req, res, _next) {
   const status = err.status || 500;
   const code = err.code || 'INTERNAL_ERROR';
-  // PostgreSQL undefined_column — often stale DB vs code (run npm run db:bootstrap from Amaz_back)
+  // Cas particulier : code Postgres 42703 = "colonne inexistante". Quasi toujours une
+  // base pas à jour par rapport au code -> on renvoie un message actionnable qui dit
+  // de relancer les migrations (db:bootstrap). Ça nous a fait gagner du temps en dev.
   const pgMissingColumn = code === '42703';
   const colHint =
     pgMissingColumn && err.column ? ` (${String(err.column)})` : '';
@@ -23,6 +31,7 @@ function errorHandler(err, req, res, _next) {
         : 'Erreur interne'
       : err.publicMessage || err.message || 'Erreur requête';
 
+  // On ne logge en détail que les vraies erreurs serveur (5xx), avec le requestId.
   if (status >= 500) {
     // eslint-disable-next-line no-console
     console.error(`[${req.requestId}]`, err);

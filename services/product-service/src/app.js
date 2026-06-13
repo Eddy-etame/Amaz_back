@@ -183,7 +183,9 @@ function createApp() {
       if (textQuery) {
         filter.$or = [
           { title: { $regex: textQuery, $options: 'i' } },
-          { description: { $regex: textQuery, $options: 'i' } }
+          { description: { $regex: textQuery, $options: 'i' } },
+          { category: { $regex: textQuery, $options: 'i' } },
+          { city: { $regex: textQuery, $options: 'i' } }
         ];
       }
 

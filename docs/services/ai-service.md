@@ -1,33 +1,33 @@
-# AI Service
+# Service IA (AI Service)
 
-**Port:** 3005  
-**Purpose:** AI-powered product recommendations and bot auth/risk scoring.
+**Port :** 3005  
+**Rôle :** **Recommandeur de catalogue** de démonstration (Mongo `$regex` sur les champs produit + derniers produits lorsque la requête est vide), scoring d'authentification bot/risque — **pas** un LLM génératif. Journalise les requêtes dans `ai_logs`.
 
-## Dependencies
+## Dépendances
 
-- MongoDB (products, ai_logs collections)
+- MongoDB (collections products, ai_logs)
 
-## Environment Variables
+## Variables d'environnement
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| AI_SERVICE_PORT | No | 3005 | HTTP port |
-| INTERNAL_SHARED_SECRET | Yes | - | Shared secret for internal auth |
-| MONGO_URI, MONGO_DB_NAME | Yes | - | MongoDB connection |
+| Variable | Requis | Défaut | Description |
+|----------|--------|--------|-------------|
+| AI_SERVICE_PORT | Non | 3005 | Port HTTP |
+| INTERNAL_SHARED_SECRET | Oui | - | Secret partagé pour l'auth interne |
+| MONGO_URI, MONGO_DB_NAME | Oui | - | Connexion MongoDB |
 
-## Main Routes
+## Routes principales
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /health | Liveness |
-| POST | /ai/recommendations | Get product recommendations by query |
-| POST | /bot/auth | Bot auth risk score (state, action) |
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| GET | /health | Vivacité |
+| POST | /ai/recommendations | Obtenir des recommandations de produits par requête |
+| POST | /bot/auth | Score de risque d'authentification bot (state, action) |
 
-## Allowed Internal Callers
+## Appelants internes autorisés
 
 - gateway
 
-## Data Model (MongoDB)
+## Modèle de données (MongoDB)
 
-- **products**: Read for recommendations
-- **ai_logs**: Logs recommendation and bot-auth requests
+- **products** : lecture pour les recommandations
+- **ai_logs** : journalise les requêtes de recommandation et d'authentification bot

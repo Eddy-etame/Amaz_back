@@ -177,6 +177,12 @@ async function loadStatusHistoryForOrder(pool, orderId, limit = 20) {
   return r.rows;
 }
 
+// Récupère un produit auprès du product-service (appel interne signé).
+// Distinction IMPORTANTE (à l'origine d'un bug tenace) : un VRAI 404 produit devient
+// 422 PRODUCT_NOT_FOUND ; mais toute AUTRE erreur amont (signature invalide, service
+// down…) devient 502 PRODUCT_LOOKUP_FAILED — surtout PAS "produit introuvable".
+// Avant, on transformait trop vite l'échec amont en PRODUCT_NOT_FOUND, ce qui faisait
+// croire à un problème de catalogue alors que c'était un souci inter-services.
 async function fetchProduct(productId, requestId) {
   const response = await internalFetch({
     baseUrl: config.productServiceUrl,
@@ -188,7 +194,23 @@ async function fetchProduct(productId, requestId) {
     timeoutMs: config.internalFetchTimeoutMs
   });
 
-  if (!response.ok || !response.payload?.data) {
+  if (!response.ok) {
+    const upstreamCode = response.payload?.error?.code;
+    const upstreamMessage = response.payload?.error?.message;
+    if (response.status === 404 || upstreamCode === 'PRODUCT_NOT_FOUND') {
+      throw {
+        status: 422,
+        code: 'PRODUCT_NOT_FOUND',
+        publicMessage: upstreamMessage || `Produit introuvable: ${productId}`
+      };
+    }
+    throw {
+      status: 502,
+      code: upstreamCode || 'PRODUCT_LOOKUP_FAILED',
+      publicMessage: upstreamMessage || `Impossible de vérifier le produit ${productId}`
+    };
+  }
+  if (!response.payload?.data) {
     throw {
       status: 422,
       code: 'PRODUCT_NOT_FOUND',
@@ -198,6 +220,8 @@ async function fetchProduct(productId, requestId) {
   return response.payload.data;
 }
 
+// Réserve du stock côté product-service (décrémente/bloque la quantité). Si la
+// réservation échoue (stock insuffisant…), on lève une erreur que le checkout attrapera.
 async function reserveProductStock({ productId, quantity, requestId }) {
   const response = await internalFetch({
     baseUrl: config.productServiceUrl,
@@ -219,6 +243,7 @@ async function reserveProductStock({ productId, quantity, requestId }) {
   }
 }
 
+// Libère du stock précédemment réservé (compensation en cas d'échec, ou annulation).
 async function releaseProductStock({ productId, quantity, requestId }) {
   await internalFetch({
     baseUrl: config.productServiceUrl,
@@ -271,6 +296,13 @@ function createApp() {
     })
   );
 
+  // Création d'une commande (checkout). Déroulé :
+  //   1) on identifie l'utilisateur (en-tête posé par la gateway) et on lit les articles ;
+  //   2) pour CHAQUE article : on vérifie le produit puis on RÉSERVE le stock ;
+  //   3) on écrit la commande + ses lignes + le paiement dans UNE transaction Postgres ;
+  //   4) on notifie l'utilisateur et on répond.
+  // Si quoi que ce soit échoue en cours de route, on LIBÈRE le stock déjà réservé
+  // (compensation, voir le `catch` final) pour ne pas "perdre" du stock.
   const handlePostCommande = async (req, res, next) => {
     const userId = String(req.headers['x-auth-user-id'] || '').trim();
     if (!userId) {
@@ -301,9 +333,11 @@ function createApp() {
       });
     }
 
+    // `reservedItems` mémorise ce qu'on a réservé : c'est la liste à libérer si ça casse.
     const reservedItems = [];
     try {
       const enrichedItems = [];
+      // Étape 2 : vérifier le produit + réserver son stock, article par article.
       for (const rawItem of rawItems) {
         const product = await fetchProduct(rawItem.productId, req.requestId);
         if (String(product.status || 'published') === 'archived') {
@@ -340,6 +374,8 @@ function createApp() {
       const shippingAddress = req.body?.adresseLivraison || req.body?.shippingAddress || {};
       const paymentMethod = String(req.body?.methodePaiement || req.body?.paymentMethod || 'card');
 
+      // Étape 3 : tout écrire dans UNE transaction. Soit tout passe (COMMIT), soit
+      // rien n'est écrit (ROLLBACK) — pas de commande à moitié créée.
       const pool = getPostgresPool();
       const client = await pool.connect();
       try {
@@ -448,6 +484,9 @@ function createApp() {
         requestId: req.requestId
       });
     } catch (error) {
+      // Compensation : quoi qu'il arrive, on rend le stock qu'on avait réservé.
+      // (`.catch(() => undefined)` : si une libération échoue, on ne masque pas l'erreur
+      // d'origine — c'est elle qu'on veut remonter au client.)
       await Promise.all(
         reservedItems.map((item) =>
           releaseProductStock({
@@ -849,8 +888,8 @@ function createApp() {
         updated = await stClient.query(
           `
             UPDATE orders
-            SET status = $2,
-                delivered_at = CASE WHEN $2 = 'delivered' THEN NOW() ELSE delivered_at END,
+            SET status = $2::text,
+                delivered_at = CASE WHEN $2::text = 'delivered' THEN NOW() ELSE delivered_at END,
                 updated_at = NOW()
             WHERE id = $1
             RETURNING id, status, user_id, total_amount

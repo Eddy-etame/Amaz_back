@@ -69,7 +69,7 @@ Service minimaliste dédié au **peppering** — réduit la surface d’attaque 
 
 ## 5. Frontends Angular — logique commune
 
-Les trois apps (users, vendors, qa-lab) partagent l’idée : **`HttpClient`** + une **base URL gateway** + **intercepteur** pour PoW et en-têtes. Le fichier `GatewayApiService` dans users encapsule `get/post/...` pour ne pas concaténer les URLs n’importe comment.
+Les trois apps (users, vendors, qa-lab) partagent l’idée : **`HttpClient`** + une **base URL gateway** + **intercepteur** pour PoW et en-têtes. Le fichier `ServiceApiGateway` (`service-api-gateway.ts`) dans users encapsule `get/post/...` pour ne pas concaténer les URLs n’importe comment.
 
 Côté **état**, on utilise des **stores** (signals ou services selon les parties du code) pour le catalogue et les commandes afin d’éviter de recharger bêtement à chaque clic.
 

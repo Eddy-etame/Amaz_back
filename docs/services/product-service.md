@@ -1,38 +1,40 @@
-# Product Service
+# Service Produit (Product Service)
 
-**Port:** 3002  
-**Purpose:** Product catalog, stock management, and stock reserve/release for orders.
+**Port :** 3002  
+**Rôle :** Catalogue de produits, gestion du stock et réservation/libération de stock pour les commandes.
 
-## Dependencies
+## Dépendances
 
-- MongoDB (products collection)
+- MongoDB (collection products)
+- PostgreSQL (lecture seule — vérification de l'approbation vendeur pour les mutations catalogue)
 
-## Environment Variables
+## Variables d'environnement
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| PRODUCT_SERVICE_PORT | No | 3002 | HTTP port |
-| INTERNAL_SHARED_SECRET | Yes | - | Shared secret for internal auth |
-| MONGO_URI, MONGO_DB_NAME | Yes | - | MongoDB connection |
+| Variable | Requis | Défaut | Description |
+|----------|--------|--------|-------------|
+| PRODUCT_SERVICE_PORT | Non | 3002 | Port HTTP |
+| INTERNAL_SHARED_SECRET | Oui | - | Secret partagé pour l'auth interne |
+| MONGO_URI, MONGO_DB_NAME | Oui | - | Connexion MongoDB |
+| PG_HOST, PG_PORT, PG_USER, PG_PASSWORD, PG_DATABASE | Oui | - | Connexion PostgreSQL (approbation vendeur) |
 
-## Main Routes
+## Routes principales
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /health | Liveness |
-| GET | /produits | List products (paginated, filterable) |
-| GET | /produits/:id | Get product by ID |
-| POST | /produits | Create product (vendor role) |
-| PUT | /produits/:id | Update product (vendor role) |
-| DELETE | /produits/:id | Delete product (vendor role) |
-| POST | /internal/produits/:id/reserve | Reserve stock (order-service only) |
-| POST | /internal/produits/:id/release | Release stock (order-service only) |
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| GET | /health | Vivacité |
+| GET | /produits | Lister les produits (paginé, filtrable) |
+| GET | /produits/:id | Obtenir un produit par ID |
+| POST | /produits | Créer un produit (rôle vendeur) |
+| PUT | /produits/:id | Modifier un produit (rôle vendeur) |
+| DELETE | /produits/:id | Supprimer un produit (rôle vendeur) |
+| POST | /internal/produits/:id/reserve | Réserver du stock (order-service uniquement) |
+| POST | /internal/produits/:id/release | Libérer du stock (order-service uniquement) |
 
-## Allowed Internal Callers
+## Appelants internes autorisés
 
 - gateway
 - order-service
 
-## Data Model (MongoDB)
+## Modèle de données (MongoDB)
 
-- **products**: id, title, description, price, category, city, stock, vendorId, status, sku, image, gallery, rating, reviewCount, createdAt, updatedAt
+- **products** : id, title, description, price, category, city, stock, vendorId, status, sku, image, gallery, rating, reviewCount, createdAt, updatedAt

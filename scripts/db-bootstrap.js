@@ -28,7 +28,8 @@ const MIGRATION_ORDER = [
   '005_vendor_approval.sql',
   '006_blocked_ips.sql',
   '007_order_status_history.sql',
-  '008_vendors_primary_key.sql'
+  '008_vendors_primary_key.sql',
+  '009_returns.sql'
 ];
 
 function createPool(overrides = {}) {

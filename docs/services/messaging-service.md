@@ -1,40 +1,42 @@
-# Messaging Service
+# Service Messagerie (Messaging Service)
 
-**Port:** 3004  
-**Purpose:** User-vendor messaging (conversations and messages) and Socket.IO real-time updates.
+**Port :** 3004  
+**Rôle :** Messagerie acheteur-vendeur (conversations et messages) et mises à jour en temps réel via Socket.IO.
 
-## Dependencies
+## Dépendances
 
-- MongoDB (conversations, messages collections)
+- MongoDB (collections conversations, messages)
 
-## Environment Variables
+## Variables d'environnement
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| MESSAGING_SERVICE_PORT | No | 3004 | HTTP port |
-| INTERNAL_SHARED_SECRET | Yes | - | Shared secret for internal auth |
-| MONGO_URI, MONGO_DB_NAME | Yes | - | MongoDB connection |
-| SOCKET_NAMESPACE | No | /messages | Socket.IO namespace |
+| Variable | Requis | Défaut | Description |
+|----------|--------|--------|-------------|
+| MESSAGING_SERVICE_PORT | Non | 3004 | Port HTTP |
+| INTERNAL_SHARED_SECRET | Oui | - | Secret partagé pour l'auth interne |
+| MONGO_URI, MONGO_DB_NAME | Oui | - | Connexion MongoDB |
+| SOCKET_NAMESPACE | Non | /messages | Namespace Socket.IO |
 
-## Main Routes
+## Routes principales
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /health | Liveness |
-| GET | /messages/conversations | List conversations |
-| GET | /messages/:produitId | Messages for product context |
-| POST | /messages | Send message |
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| GET | /health | Vivacité |
+| GET | /messages/conversations | Lister les conversations |
+| GET | /messages/:produitId | Messages dans le contexte d'un produit |
+| POST | /messages | Envoyer un message |
 
 ## Socket.IO
 
-- **Namespace:** /messages
-- **Events:** connection, message, etc.
+- **Namespace :** /messages
+- **Authentification :** payload `{ userId, role }` lors de la connexion (`role: 'user'` ou `role: 'vendor'`)
+- **Événements :** `connection`, `message` (réception d'un nouveau message en temps réel)
+- **Règle serveur :** seuls les échanges acheteur-vendeur sont autorisés (pas de canal acheteur-acheteur)
 
-## Allowed Internal Callers
+## Appelants internes autorisés
 
 - gateway
 
-## Data Model (MongoDB)
+## Modèle de données (MongoDB)
 
-- **conversations**: id, userId, vendorId, productId, orderId, subject, unreadByUser, unreadByVendor, lastMessageAt
-- **messages**: id, conversationId, senderId, content, userId, vendorId, productId, orderId, sentAt, readByUser, readByVendor
+- **conversations** : id, userId, vendorId, productId, orderId, subject, unreadByUser, unreadByVendor, lastMessageAt
+- **messages** : id, conversationId, senderId, content, userId, vendorId, productId, orderId, sentAt, readByUser, readByVendor

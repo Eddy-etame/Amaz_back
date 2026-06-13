@@ -1,44 +1,44 @@
-# UX / Amazon-parity backlog (Phase 5+)
+# Backlog UX / parité Amazon (Phase 5+)
 
-Prioritize after vendor catalog (Phase 2) and admin runbook are stable. Not committed as sprint scope — ranking is product-dependent.
+À prioriser après la stabilisation du catalogue vendeur (Phase 2) et du runbook admin. Non engagé comme périmètre de sprint — le classement dépend des priorités produit.
 
-## Trust & content
+## Confiance et contenu
 
-- Verified-purchase reviews and star histogram on PDP
-- Seller profile page (policies, ratings, contact)
-- Q&A on product page
-- Clear return / warranty snippet on listing and PDP
+- Avis d'achat vérifié et histogramme d'étoiles sur la fiche produit
+- Page profil vendeur (politiques, notes, contact)
+- Questions/réponses sur la fiche produit
+- Encart retour / garantie clair sur le listing et la fiche produit
 
-## Discovery & search
+## Découverte et recherche
 
-- Category taxonomy + breadcrumbs
-- Faceted filters (price, brand, rating, prime-like shipping badge)
-- Search relevance, typo tolerance (OpenSearch / Atlas Search)
-- “Customers who bought this also bought” / similar items
+- Taxonomie de catégories + fil d'Ariane
+- Filtres à facettes (prix, marque, note, badge livraison type « prime »)
+- Pertinence de recherche, tolérance aux fautes (OpenSearch / Atlas Search)
+- « Les clients ayant acheté ceci ont aussi acheté » / articles similaires
 
-## Post-purchase
+## Après-achat
 
-- Order timeline (placed → shipped → delivered)
-- Tracking number and carrier fields
-- Cancellation window and refund status
+- Chronologie de la commande (passée → expédiée → livrée)
+- Numéro de suivi et champs transporteur
+- Fenêtre d'annulation et statut de remboursement
 
-## Checkout & cart
+## Checkout et panier
 
-- Address validation feedback
-- “Price or stock changed” modal before pay
-- Save for later, list subscriptions (long-term)
+- Retour de validation d'adresse
+- Modale « Le prix ou le stock a changé » avant paiement
+- Sauvegarder pour plus tard, abonnements à des listes (long terme)
 
-## Seller (vendor app)
+## Vendeur (application vendeur)
 
-- Real-time order alerts, bulk shipping labels (integrations)
-- Performance dashboard (conversion, defects)
+- Alertes de commande en temps réel, étiquettes d'expédition en masse (intégrations)
+- Tableau de bord de performance (conversion, défauts)
 
-## Ops & risk
+## Ops et risque
 
-- Fraud signals (velocity, many failed payments)
-- Feature flags for risky flows
-- Automated holds on suspicious orders
+- Signaux de fraude (vélocité, nombreux échecs de paiement)
+- Feature flags pour les flux risqués
+- Blocages automatiques sur les commandes suspectes
 
 ---
 
-Update this file when items move to active roadmap; link from vendor demo banners if useful.
+Mettre à jour ce fichier quand des éléments passent sur la roadmap active.

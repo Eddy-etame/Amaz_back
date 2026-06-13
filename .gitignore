@@ -1,7 +1,14 @@
-.env
+# Dépendances installées et secrets : jamais versionnés
 /node_modules
-/db
-docker-compose.yml
 .env
-docker-compose.full.yml
+.env.local
 *.log
+
+# Artefacts d'outils (IA / éditeur) : gardés hors du dépôt
+.cursor/
+*.plan.md
+
+# IMPORTANT — ne PAS ignorer ce qui suit (un clone en a besoin pour démarrer) :
+#   - docker-compose.yml / docker-compose.full.yml  -> lancer la stack
+#   - db/ (migrations, seed.js, mongo/init.js)       -> initialiser les bases
+# Ces fichiers ne contiennent aucun secret (les secrets restent dans .env).

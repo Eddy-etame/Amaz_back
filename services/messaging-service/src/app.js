@@ -124,11 +124,17 @@ async function appendMessage({ payload, auth }) {
   };
 
   await messages.insertOne(message);
-  return message;
+  return {
+    ...message,
+    userName: conversation.userName,
+    vendorName: conversation.vendorName,
+    subject: conversation.subject
+  };
 }
 
 function createMessagingServer() {
   const app = express();
+  let broadcastStoredMessage = () => undefined;
   app.disable('x-powered-by');
   app.use(express.json({ limit: '2mb' }));
   app.use(requestIdMiddleware);
@@ -229,6 +235,7 @@ function createMessagingServer() {
         role: String(req.headers['x-auth-role'] || '').trim()
       };
       const message = await appendMessage({ payload: req.body, auth });
+      broadcastStoredMessage(message);
       return res.status(201).json({
         success: true,
         data: message,
@@ -255,6 +262,10 @@ function createMessagingServer() {
   });
 
   const namespace = io.of(config.socketNamespace);
+  broadcastStoredMessage = (stored) => {
+    namespace.to(`user:${stored.userId}`).emit('message.new', stored);
+    namespace.to(`vendor:${stored.vendorId}`).emit('message.new', stored);
+  };
   namespace.use((socket, next) => {
     const userId = String(socket.handshake.auth?.userId || socket.handshake.auth?.vendorId || '').trim();
     const role = String(socket.handshake.auth?.role || '').trim();
@@ -281,8 +292,7 @@ function createMessagingServer() {
             role: auth.role
           }
         });
-        namespace.to(`user:${stored.userId}`).emit('message.new', stored);
-        namespace.to(`vendor:${stored.vendorId}`).emit('message.new', stored);
+        broadcastStoredMessage(stored);
       } catch (error) {
         socket.emit('message.error', {
           code: 'MESSAGE_INVALID',

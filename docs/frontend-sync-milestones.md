@@ -1,9 +1,9 @@
-# Frontend Sync Milestones
+# Jalons de synchronisation Frontend
 
-## Milestone 1 - Auth + Verification + Forgot Password
+## Jalon 1 — Auth + Vérification + Mot de passe oublié
 
-- Gateway: `http://localhost:3000/api/v1`
-- Endpoints:
+- Gateway : `http://localhost:3000/api/v1`
+- Endpoints :
   - `POST /auth/register`
   - `POST /auth/login`
   - `POST /auth/refresh`
@@ -13,41 +13,41 @@
   - `POST /auth/password/forgot/start`
   - `POST /auth/password/forgot/confirm`
   - `POST /auth/password/reset`
-- Front requirements:
-  - Send `Authorization: Bearer <accessToken>` after login.
-  - Send `X-Client-Fingerprint` + PoW headers on each API request.
-  - Allow user channel choice (`email` or `sms`) for OTP start endpoints.
+- Exigences côté front :
+  - Envoyer `Authorization: Bearer <accessToken>` après connexion.
+  - Envoyer `X-Client-Fingerprint` + en-têtes PoW à chaque requête API.
+  - Permettre le choix du canal (`email` ou `sms`) pour les endpoints de démarrage OTP.
 
-## Milestone 2 - Orders / Returns integration
+## Jalon 2 — Intégration Commandes / Retours
 
-- Orders endpoints:
+- Endpoints commandes :
   - `POST /commandes`
   - `GET /commandes`
   - `GET /commandes/:orderId`
   - `PUT /commandes/:orderId/annuler`
   - `PUT /commandes/:orderId/statut`
-- Payload compatibility:
-  - Accepts `articles` or `items`
-  - Supports french and english item keys (`produitId`/`productId`, `quantite`/`quantity`)
+- Compatibilité du payload :
+  - Accepte `articles` ou `items`
+  - Supporte les clés d'articles en français et en anglais (`produitId`/`productId`, `quantite`/`quantity`)
 
-## Milestone 3 - Messaging realtime + REST fallback
+## Jalon 3 — Messagerie temps réel + repli REST
 
-- REST:
+- REST :
   - `GET /messages/conversations`
   - `GET /messages/:produitId`
   - `POST /messages`
-- Socket.IO:
-  - URL: `http://localhost:3004/messages`
-  - auth payload:
-    - user app: `{ userId, role: 'user' }`
-    - vendor app: `{ userId, role: 'vendor' }`
-- Rule enforced server-side:
-  - user-vendor only (no user-user channel).
+- Socket.IO :
+  - URL : `http://localhost:3004/messages`
+  - Payload d'authentification :
+    - App acheteur : `{ userId, role: 'user' }`
+    - App vendeur : `{ userId, role: 'vendor' }`
+- Règle appliquée côté serveur :
+  - Acheteur-vendeur uniquement (pas de canal acheteur-acheteur).
 
-## Required backend config before integration tests
+## Configuration backend requise avant les tests d'intégration
 
-- `INTERNAL_SHARED_SECRET` set and consistent across gateway/services.
-- `ACCESS_HMAC_SECRET`, `REFRESH_HMAC_SECRET`, `PEPPER_MASTER_SECRET` non-empty.
-- PostgreSQL migration executed.
-- Mongo bootstrap executed.
-- `POW_DIFFICULTY` synchronized with front environments (`users` and `vendors`).
+- `INTERNAL_SHARED_SECRET` défini et cohérent entre la gateway et les services.
+- `ACCESS_HMAC_SECRET`, `REFRESH_HMAC_SECRET`, `PEPPER_MASTER_SECRET` non vides.
+- Migration PostgreSQL exécutée.
+- Bootstrap Mongo exécuté.
+- `POW_DIFFICULTY` synchronisé avec les environnements front (`users` et `vendors`).

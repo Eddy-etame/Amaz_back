@@ -1,27 +1,27 @@
-# NODE_ENV: Development vs Production
+# NODE_ENV : Développement vs Production
 
-## What NODE_ENV Does
+## Rôle de NODE_ENV
 
-`NODE_ENV` is a standard Node.js environment variable that indicates the runtime mode. It affects logging, error details, caching, and **security checks** in this project.
+`NODE_ENV` est une variable d'environnement standard de Node.js qui indique le mode d'exécution. Elle affecte la journalisation, le détail des erreurs, le cache et les **vérifications de sécurité** dans ce projet.
 
-## Development vs Production
+## Développement vs Production
 
 | Aspect | `development` | `production` |
-|--------|---------------|---------------|
-| **Placeholder secrets** | Allowed (e.g. `change-pepper-master-secret`) | **Rejected** – app throws and exits |
-| **Error messages** | More verbose (stack traces, internal codes) | Sanitized (e.g. "unreachable" instead of ECONNREFUSED) |
-| **Logging** | Debug-level, more output | Typically info/warn only |
-| **Performance** | May skip optimizations | Caching, minification, etc. |
+|--------|---------------|--------------|
+| **Secrets placeholder** | Autorisés (ex. `change-pepper-master-secret`) | **Rejetés** — l'app lève une erreur et s'arrête |
+| **Messages d'erreur** | Plus verbeux (traces de pile, codes internes) | Assainis (ex. « unreachable » au lieu de ECONNREFUSED) |
+| **Journalisation** | Niveau debug, sortie plus abondante | Généralement info/warn uniquement |
+| **Performance** | Peut ignorer certaines optimisations | Cache, minification, etc. |
 
-## Why Use Development in Docker (with Default Secrets)
+## Pourquoi utiliser le mode développement dans Docker (avec les secrets par défaut)
 
-When running `docker compose -f docker-compose.full.yml up` **without** setting real secrets in `.env`, the services use placeholder values like:
+Quand on lance `docker compose -f docker-compose.full.yml up` **sans** définir de vrais secrets dans `.env`, les services utilisent des valeurs placeholder comme :
 
 - `INTERNAL_SHARED_SECRET=change-this-internal-secret`
 - `PEPPER_MASTER_SECRET=change-pepper-master-secret`
 - `ACCESS_HMAC_SECRET=change-access-hmac-secret`
 
-The `requiredSecret()` helper in each service checks:
+Le helper `requiredSecret()` dans chaque service vérifie :
 
 ```javascript
 if (process.env.NODE_ENV === 'production' && value.startsWith('change-')) {
@@ -29,22 +29,22 @@ if (process.env.NODE_ENV === 'production' && value.startsWith('change-')) {
 }
 ```
 
-So:
+Résultat :
 
-- **`NODE_ENV=production`** + placeholder → app **crashes on startup**
-- **`NODE_ENV=development`** + placeholder → app **starts** (for local/dev use only)
+- **`NODE_ENV=production`** + placeholder → l'app **plante au démarrage**
+- **`NODE_ENV=development`** + placeholder → l'app **démarre** (usage local/dev uniquement)
 
-## When to Use Production
+## Quand utiliser le mode production
 
-Use `NODE_ENV=production` when:
+Utiliser `NODE_ENV=production` quand :
 
-1. You have **real secrets** (not starting with `change-`)
-2. You are deploying to a real environment (staging, production)
-3. You want stricter security and less verbose errors
+1. On dispose de **vrais secrets** (ne commençant pas par `change-`)
+2. On déploie sur un environnement réel (staging, production)
+3. On souhaite une sécurité plus stricte et des erreurs moins verbeuses
 
-## Summary
+## Résumé
 
-| Scenario | NODE_ENV | Secrets |
+| Scénario | NODE_ENV | Secrets |
 |----------|----------|---------|
-| Local dev, Docker with defaults | `development` | Placeholders OK |
-| Production deployment | `production` | Real secrets required |
+| Dev local, Docker avec les défauts | `development` | Placeholders OK |
+| Déploiement production | `production` | Vrais secrets obligatoires |

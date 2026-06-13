@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Generate PDFs from Markdown across the repo.
  * Requires: md-to-pdf (devDependency at Amaz_back root).
  *
@@ -17,6 +17,11 @@ const OUTPUT_DIR = path.join(REPO_ROOT, 'docs', 'pdf');
 /** @type {{ md: string, pdf: string }[]} */
 const DOC_JOBS = [
   { md: path.join(DOCS, 'PLAN_MEMOIRE_DOCUMENTATION.md'), pdf: 'PLAN_MEMOIRE_DOCUMENTATION.pdf' },
+  { md: path.join(DOCS, 'HISTORIQUE.md'), pdf: 'HISTORIQUE.pdf' },
+  { md: path.join(DOCS, 'GUIDE_LECTURE.md'), pdf: 'GUIDE_LECTURE.pdf' },
+  { md: path.join(REPO_ROOT, 'users', 'GUIDE_LECTURE.md'), pdf: 'guide-lecture-users.pdf' },
+  { md: path.join(REPO_ROOT, 'vendors', 'GUIDE_LECTURE.md'), pdf: 'guide-lecture-vendors.pdf' },
+  { md: path.join(REPO_ROOT, 'qa-lab', 'GUIDE_LECTURE.md'), pdf: 'guide-lecture-qa-lab.pdf' },
   { md: path.join(DOCS, 'MANUEL_UTILISATEUR.md'), pdf: 'MANUEL_UTILISATEUR.pdf' },
   { md: path.join(DOCS, 'MICROSERVICES_FRONTEND_MAP.md'), pdf: 'MICROSERVICES_FRONTEND_MAP.pdf' },
   { md: path.join(DOCS, 'VERIFY.md'), pdf: 'VERIFY.pdf' },
@@ -42,7 +47,21 @@ const DOC_JOBS = [
   { md: path.join(AMAZ_BACK, 'services', 'messaging-service', 'DOCUMENTATION.md'), pdf: 'folder-messaging-service-DOCUMENTATION.pdf' },
   { md: path.join(AMAZ_BACK, 'services', 'ai-service', 'DOCUMENTATION.md'), pdf: 'folder-ai-service-DOCUMENTATION.pdf' },
   { md: path.join(AMAZ_BACK, 'services', 'pepper-service', 'DOCUMENTATION.md'), pdf: 'folder-pepper-service-DOCUMENTATION.pdf' },
-  { md: path.join(AMAZ_BACK, 'admin-service', 'DOCUMENTATION.md'), pdf: 'folder-admin-service-DOCUMENTATION.pdf' }
+  { md: path.join(AMAZ_BACK, 'admin-service', 'DOCUMENTATION.md'), pdf: 'folder-admin-service-DOCUMENTATION.pdf' },
+  { md: path.join(AMAZ_BACK, 'services', 'returns-service', 'DOCUMENTATION.md'), pdf: 'folder-returns-service-DOCUMENTATION.pdf' },
+  { md: path.join(DOCS, 'services', 'returns-service.md'), pdf: 'service-returns.pdf' },
+  { md: path.join(DOCS, 'ADMIN_RUNBOOK.md'), pdf: 'ADMIN_RUNBOOK.pdf' },
+  { md: path.join(DOCS, 'NODE_ENV.md'), pdf: 'NODE_ENV.pdf' },
+  { md: path.join(DOCS, 'UX_BACKLOG.md'), pdf: 'UX_BACKLOG.pdf' },
+  { md: path.join(DOCS, 'frontend-sync-milestones.md'), pdf: 'frontend-sync-milestones.pdf' },
+  { md: path.join(DOCS, 'security-risk-review.md'), pdf: 'security-risk-review.pdf' },
+  { md: path.join(DOCS, 'CDC_ENTITES_DB.md'), pdf: 'CDC_ENTITES_DB.pdf' },
+  { md: path.join(REPO_ROOT, 'docs', 'contrat-api.md'), pdf: 'contrat-api.pdf' },
+  { md: path.join(REPO_ROOT, 'docs', 'schema-architecture.md'), pdf: 'schema-architecture.pdf' },
+  { md: path.join(REPO_ROOT, 'docs', 'justification-db.md'), pdf: 'justification-db.pdf' },
+  { md: path.join(REPO_ROOT, 'docs', 'modelisation-entites.md'), pdf: 'modelisation-entites.pdf' },
+  { md: path.join(REPO_ROOT, 'docs', 'users-frontend-progression.md'), pdf: 'users-frontend-progression.pdf' },
+  { md: path.join(REPO_ROOT, 'docs', 'FRONTEND_STRUCTURE.md'), pdf: 'FRONTEND_STRUCTURE.pdf' }
 ];
 
 const PDF_OPTIONS = {

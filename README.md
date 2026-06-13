@@ -1,172 +1,197 @@
-# Amaz Backend
+# Backend Amaz
 
-Microservices backend for the Amaz marketplace:
+Backend microservices pour la marketplace Amaz :
 
-- `gateway` (API entrypoint + security middleware)
+- `gateway` (point d'entrée API + middleware de sécurité)
 - `services/user-service`
 - `services/product-service`
 - `services/order-service`
 - `services/messaging-service`
+- `services/returns-service`
 - `services/ai-service`
 - `services/pepper-service`
 
-## Which URL should I open?
+## URLs recommandées
 
-| Goal | URL | Notes |
-|------|-----|-------|
-| **API calls (clients, Postman, frontend)** | `http://localhost:3000/api/v1/...` | Use the gateway. Requires PoW headers for `/api/v1/*` (users/vendors apps add these automatically). |
-| **Gateway health** | `http://localhost:3000/health` | Public. |
-| **Aggregate health (all services)** | `http://localhost:3000/health/aggregate` | Public. |
-| **Admin panel (AdminJS)** | `http://localhost:3010/admin` | Separate service; see `docs/ADMIN_RUNBOOK.md`. |
-| **Direct service liveness** | `http://localhost:3001/health` … `http://localhost:3006/health` | Public. Use for Docker/QA health checks. |
-| **Service info (root)** | `http://localhost:3001/` … `http://localhost:3006/` | Public. Returns usage hints. |
-| **Direct business routes** | `http://localhost:3002/produits`, etc. | **Do not use from browser.** Returns `INTERNAL_AUTH_REQUIRED` unless signed `x-internal-*` headers are present (gateway and internal callers only). |
+| Objectif | URL | Notes |
+|----------|-----|-------|
+| **Appels API (clients, Postman, frontend)** | `http://localhost:3000/api/v1/...` | Utiliser la gateway. Nécessite les en-têtes PoW pour `/api/v1/*` (les apps users/vendors les ajoutent automatiquement). |
+| **Santé gateway** | `http://localhost:3000/health` | Public. |
+| **Santé agrégée (tous les services)** | `http://localhost:3000/health/aggregate` | Public. |
+| **Panneau admin (AdminJS)** | `http://localhost:3010/admin` | Service séparé ; voir `docs/ADMIN_RUNBOOK.md`. |
+| **Vivacité directe des services** | `http://localhost:3001/health` … `http://localhost:3008/health` | Public. Pour les health checks Docker/QA. |
+| **Info service (racine)** | `http://localhost:3001/` … `http://localhost:3008/` | Public. Retourne des indications d'utilisation. |
+| **Routes métier directes** | `http://localhost:3002/produits`, etc. | **Ne pas utiliser depuis le navigateur.** Retourne `INTERNAL_AUTH_REQUIRED` sauf si les en-têtes signés `x-internal-*` sont présents (gateway et appelants internes uniquement). |
 
-## Services overview
+## Vue d'ensemble des services
 
-| Service | Port | Purpose | Allowed direct callers |
-|---------|------|---------|------------------------|
-| gateway | 3000 | API entrypoint, PoW, rate limit, auth, proxy | Clients (with PoW) |
-| user-service | 3001 | Auth, users, addresses, notifications | gateway, order-service |
-| product-service | 3002 | Products, stock, reserve/release | gateway, order-service |
-| order-service | 3003 | Orders, checkout | gateway |
-| messaging-service | 3004 | User-vendor messaging, Socket.IO | gateway |
-| ai-service | 3005 | AI recommendations, bot auth | gateway |
-| pepper-service | 3006 | Password/token peppering (HMAC) | user-service |
+| Service | Port | Rôle | Appelants directs autorisés |
+|---------|------|------|-----------------------------|
+| gateway | 3000 | Point d'entrée API, PoW, rate limit, auth, proxy | Clients (avec PoW) |
+| user-service | 3001 | Auth, utilisateurs, adresses, notifications | gateway, order-service |
+| product-service | 3002 | Produits, stock, réservation/libération | gateway, order-service |
+| order-service | 3003 | Commandes, checkout | gateway |
+| messaging-service | 3004 | Messagerie acheteur-vendeur, Socket.IO | gateway |
+| returns-service | 3008 | Flux de retours vendeur/acheteur | gateway |
+| ai-service | 3005 | Recommandations IA, auth bot | gateway |
+| pepper-service | 3006 | Peppering de mots de passe/tokens (HMAC) | user-service |
 
-## Constraints respected
+## Contraintes respectées
 
-- Node.js + Express only
-- PostgreSQL + MongoDB native driver
-- Manual security primitives (no JWT libs, no bcrypt, no passport)
-- User-vendor messaging only
+- Node.js + Express uniquement
+- PostgreSQL + driver natif MongoDB
+- Primitives de sécurité manuelles (pas de libs JWT, pas de bcrypt, pas de passport)
+- Messagerie acheteur-vendeur uniquement
 
-## Environment
+## Environnement
 
-Copy `.env.example` to `.env` and fill secrets.
+Copier `.env.example` vers `.env` et renseigner les secrets.
 
-**Bootstrap vs restart:** `npm run db:bootstrap` (and `db:seed`) are **manual, one-time** setup steps when you first clone the project or after you intentionally reset data. **Restarting Docker or Node does not wipe the database** and does not automatically re-seed. Demo seeds are for **development only** — they replace seed rows on `npm run db:postgres:seed` when you run the seed script, not on every DB restart.
+**Bootstrap vs redémarrage :** `npm run db:bootstrap` (et `db:seed`) sont des étapes de configuration **manuelles, ponctuelles** lors du premier clone du projet ou après une réinitialisation volontaire des données. **Redémarrer Docker ou Node ne supprime pas la base de données** et ne re-seede pas automatiquement. Les seeds de démo sont réservés au **développement** — ils remplacent les lignes de seed lors de l'exécution de `npm run db:postgres:seed`, pas à chaque redémarrage de la DB.
 
-Required for minimal runs:
+Requis pour un fonctionnement minimal :
 
-- **Gateway:** `INTERNAL_SHARED_SECRET`
-- **User service:** `INTERNAL_SHARED_SECRET`, `ACCESS_HMAC_SECRET`, `REFRESH_HMAC_SECRET`; optional for dev when Pepper is down: `PEPPER_CLIENT_SECRET`
-- **Pepper service:** `INTERNAL_SHARED_SECRET`, `PEPPER_MASTER_SECRET`
-- **PostgreSQL:** `PG_HOST`, `PG_PORT`, `PG_USER`, `PG_PASSWORD`, `PG_DATABASE` (for user-service and order-service)
-- **MongoDB:** `MONGO_URI`, `MONGO_DB_NAME` (for product, messaging, ai services)
-- **Product-service** also reads **PostgreSQL** (`PG_*`) to enforce **vendor approval** on catalog mutations.
-- **Admin-service:** `INTERNAL_SHARED_SECRET`, `USER_SERVICE_URL`, `PG_*` (or `DATABASE_URL`), optional `ADMIN_SESSION_SECRET` — see `docs/ADMIN_RUNBOOK.md`.
+- **Gateway :** `INTERNAL_SHARED_SECRET`
+- **User service :** `INTERNAL_SHARED_SECRET`, `ACCESS_HMAC_SECRET`, `REFRESH_HMAC_SECRET` ; optionnel en dev quand Pepper est indisponible : `PEPPER_CLIENT_SECRET`
+- **Pepper service :** `INTERNAL_SHARED_SECRET`, `PEPPER_MASTER_SECRET`
+- **PostgreSQL :** `PG_HOST`, `PG_PORT`, `PG_USER`, `PG_PASSWORD`, `PG_DATABASE` (pour user-service et order-service)
+- **MongoDB :** `MONGO_URI`, `MONGO_DB_NAME` (pour product, messaging, ai services)
+- **Product-service** lit aussi **PostgreSQL** (`PG_*`) pour appliquer l'**approbation vendeur** sur les mutations catalogue.
+- **Admin-service :** `INTERNAL_SHARED_SECRET`, `USER_SERVICE_URL`, `PG_*` (ou `DATABASE_URL`), optionnel `ADMIN_SESSION_SECRET` — voir `docs/ADMIN_RUNBOOK.md`.
 
-Leave `CORS_ALLOWED_ORIGINS` empty to allow all origins (e.g. QA lab on port 4202).
+Laisser `CORS_ALLOWED_ORIGINS` vide pour autoriser toutes les origines (ex. QA lab sur le port 4202).
 
-## Startup order
+## Ordre de démarrage
 
-Start services in this order so dependencies are up:
+Démarrer les services dans cet ordre pour que les dépendances soient prêtes :
 
-1. **Databases:** `docker compose up -d` (Postgres + Mongo).
-2. **Pepper** (port 3006) - no DB; other services may call it for hashing.
-3. **User** (3001) - needs Postgres and Pepper (or `PEPPER_CLIENT_SECRET` in dev).
-4. **Product** (3002), **Order** (3003), **Messaging** (3004), **AI** (3005) - order between them does not matter.
-5. **Gateway** (3000) - last; it proxies to all of the above.
+1. **Bases de données :** `docker compose up -d` (Postgres + Mongo).
+2. **Pepper** (port 3006) — pas de DB ; d'autres services l'appellent pour le hachage.
+3. **User** (3001) — nécessite Postgres et Pepper (ou `PEPPER_CLIENT_SECRET` en dev).
+4. **Product** (3002), **Order** (3003), **Messaging** (3004), **AI** (3005), **Returns** (3008) — l'ordre entre eux n'a pas d'importance une fois les dépendances prêtes.
+5. **Gateway** (3000) — en dernier ; elle proxie vers tous les services ci-dessus.
 
-Health checks: use `GET http://localhost:3000/health/aggregate` to see gateway + all services status (e.g. from QA lab or `scripts/run-qa-campaign.js`).
+Health checks : utiliser `GET http://localhost:3000/health/aggregate` pour voir le statut gateway + tous les services (ex. depuis le QA lab ou `scripts/run-qa-campaign.js`).
 
-**Full local verification** (stack + DB required): from `Amaz_back` run `npm run verify:local`. See [docs/VERIFY.md](docs/VERIFY.md) for prerequisites, skip flags, and Angular build commands.
+**Vérification locale complète** (stack + DB requis) : depuis `Amaz_back` lancer `npm run verify:local`. Voir [docs/VERIFY.md](docs/VERIFY.md) pour les prérequis, les flags de skip et les commandes de build Angular.
 
-**API contract (draft):** [docs/openapi/gateway-v1.yaml](docs/openapi/gateway-v1.yaml)
+**Contrat API (brouillon) :** [docs/openapi/gateway-v1.yaml](docs/openapi/gateway-v1.yaml)
 
-## Quick start
+## Démarrage rapide
 
-**Important:** Run `npm run db:bootstrap` before first use. Without it, the products collection is empty and order confirmation will fail with 400.
+**Important :** Exécuter `npm run db:bootstrap` avant la première utilisation. Sans cela, la collection products est vide et la confirmation de commande échouera avec 400.
 
-From `Amaz_back`:
+Depuis `Amaz_back` :
 
 ```bash
-# 1. Start databases
+# 1. Démarrer les bases de données
 docker compose up -d
 
 # 2. Bootstrap DB (migrations + seed)
 npm run db:bootstrap
 
-# 3. Start full stack (use docker-compose.full.yml)
+# 3. Démarrer la stack complète (avec docker-compose.full.yml)
 docker compose -f docker-compose.full.yml up -d --build
 ```
 
-Seeded users (see `db/postgres/seed.js`): **`test@amaz.com` / `AmazQA2026!`** (QA lab default; override with `SEED_QA_TEST_PASSWORD`), and `eddy.etame@enkoschools.com` / `Amaz@2026!`.
+Utilisateurs de seed (voir `db/postgres/seed.js`) : **`test@amaz.com` / `AmazQA2026!`** (défaut QA lab ; modifiable via `SEED_QA_TEST_PASSWORD`), et `eddy.etame@enkoschools.com` / `Amaz@2026!`.
 
-## Local DB orchestration (Docker)
+## Orchestration locale des DB (Docker)
 
-Run these commands from `Amaz_back`:
+Exécuter ces commandes depuis `Amaz_back` :
 
-- Start PostgreSQL + MongoDB: `docker compose up -d`
-- Check containers state: `docker compose ps`
-- Check health logs if needed: `docker compose logs postgres mongo`
-- Stop containers: `docker compose down`
-- Stop and remove named volumes: `docker compose down -v`
+- Démarrer PostgreSQL + MongoDB : `docker compose up -d`
+- Vérifier l'état des conteneurs : `docker compose ps`
+- Consulter les logs de santé si besoin : `docker compose logs postgres mongo`
+- Arrêter les conteneurs : `docker compose down`
+- Arrêter et supprimer les volumes nommés : `docker compose down -v`
 
-## Database bootstrap
+## Bootstrap de la base de données
 
-**One command (recommended on the host):**
+**Une seule commande (recommandé sur l'hôte) :**
 
 ```bash
 npm run db:bootstrap
 ```
 
-Runs all Postgres migrations in `db/postgres/migrations`, then Postgres seed and Mongo init.
+Exécute toutes les migrations Postgres dans `db/postgres/migrations`, puis le seed Postgres et l'init Mongo.
 
-**Docker full stack:** `npm run db:bootstrap` uses `PG_HOST` from `.env` (often `localhost:5432`). That must be the **same** Postgres instance the containers use (port published from `amaz-postgres`). If you have another PostgreSQL on `5432`, bootstrap may update the wrong database and the app will still error (e.g. PostgreSQL `42703`). In that case run migrations **inside** Compose:
+**Stack Docker complète :** `npm run db:bootstrap` utilise `PG_HOST` depuis `.env` (souvent `localhost:5432`). Ce doit être la **même** instance Postgres que celle utilisée par les conteneurs (port publié depuis `amaz-postgres`). Si une autre instance PostgreSQL tourne sur `5432`, le bootstrap peut mettre à jour la mauvaise base et l'app continuera d'échouer (ex. PostgreSQL `42703`). Dans ce cas, exécuter les migrations **à l'intérieur** de Compose :
 
 ```bash
 npm run db:bootstrap:docker
 ```
 
-(requires stack up: `docker compose -f docker-compose.full.yml up -d`; uses the `bootstrap` service under `--profile tools`.)
+(nécessite la stack active : `docker compose -f docker-compose.full.yml up -d` ; utilise le service `bootstrap` sous `--profile tools`.)
 
-**Multi-frontend dev (ports 4200 / 4201 / 4203) and empty catalog:**
+**Dev multi-frontend (ports 4200 / 4201 / 4202) et catalogue vide :**
 
-1. After `docker compose -f docker-compose.full.yml up -d`, run **`npm run db:bootstrap:docker`** so **Mongo** (products) and Postgres match the containers.
-2. **Rebuild or restart the gateway** after changing `CORS_ALLOWED_ORIGINS` or [`gateway/src/config.js`](gateway/src/config.js) dev defaults.
-3. Use **one** hostname family in the browser for all apps (`localhost` *or* `127.0.0.1`); CORS lists both in dev.
-4. Verify API + PoW: **`npm run test:gateway-suite`** (expects `GET /api/v1/produits` with items).
+1. Après `docker compose -f docker-compose.full.yml up -d`, lancer **`npm run db:bootstrap:docker`** pour que **Mongo** (produits) et Postgres correspondent aux conteneurs.
+2. **Reconstruire ou redémarrer la gateway** après modification de `CORS_ALLOWED_ORIGINS` ou des valeurs par défaut de [`gateway/src/config.js`](gateway/src/config.js).
+3. Utiliser **une seule** famille de hostname dans le navigateur pour toutes les apps (`localhost` *ou* `127.0.0.1`) ; CORS liste les deux en dev.
+4. Vérifier API + PoW : **`npm run test:gateway-suite`** (attend `GET /api/v1/produits` avec des éléments).
 
-**Manual steps:**
+**Étapes manuelles :**
 
-- PostgreSQL: run all files in `db/postgres/migrations/` in lexical order (or use `npm run db:bootstrap`)
-- Postgres seed: `npm run db:postgres:seed`
-- Mongo init: `npm run db:mongo:init`
+- PostgreSQL : exécuter tous les fichiers dans `db/postgres/migrations/` dans l'ordre lexical (ou utiliser `npm run db:bootstrap`)
+- Seed Postgres : `npm run db:postgres:seed`
+- Init Mongo : `npm run db:mongo:init`
 
-## Testing
+## Tests
 
-**Prerequisites:** Docker (Postgres + Mongo), or full stack running.
+**Prérequis :** Docker (Postgres + Mongo), ou stack complète en cours d'exécution.
 
-| Command | Description |
-|---------|-------------|
-| `npm test` | Smoke tests (static file/snippet checks, no services needed) |
-| `npm run qa:campaign` | Direct `/health` on each service with **retries** (env: `QA_HEALTH_RETRIES`, `QA_HEALTH_RETRY_MS`; requires stack on localhost) |
-| `npm run test:contract-smoke` | Port health + GET `/api/v1/produits` + POST `/api/v1/bot/auth` with PoW (`SKIP_CONTRACT=1` = skip PoW calls) |
-| `npm run test:gateway-suite` | **Full API regression** via gateway: PoW + register/login/me + products + orders + AI + messages + bot/auth (run on the **host** where Docker publishes `3000–3006`). Waits up to 60s for user-service in aggregate (override with `GATEWAY_SUITE_WAIT_USER_MS`, or `GATEWAY_SUITE_SKIP_WAIT=1` to disable) |
-| `npm run test:e2e-auth` | E2E auth: login + GET /auth/me with PoW (gateway, user-service, pepper, Postgres) |
+| Commande | Description |
+|----------|-------------|
+| `npm test` | Tests smoke (vérifications statiques de fichiers/snippets, pas de services requis) |
+| `npm run qa:campaign` | `/health` direct sur chaque service avec **retries** (env : `QA_HEALTH_RETRIES`, `QA_HEALTH_RETRY_MS` ; stack sur localhost requise) |
+| `npm run test:contract-smoke` | Santé par port + GET `/api/v1/produits` + POST `/api/v1/bot/auth` avec PoW (`SKIP_CONTRACT=1` = ignorer les appels PoW) |
+| `npm run test:gateway-suite` | **Régression API complète** via la gateway : PoW + register/login/me + produits + commandes + messages + bot/auth (exécuter sur l'**hôte** où Docker publie `3000–3008`). Attend jusqu'à 60s le user-service en agrégé (surcharger avec `GATEWAY_SUITE_WAIT_USER_MS`, ou `GATEWAY_SUITE_SKIP_WAIT=1` pour désactiver) |
+| `npm run test:e2e-auth` | Auth E2E : login + GET /auth/me avec PoW (gateway, user-service, pepper, Postgres) |
 
-**QA Lab (browser):** `cd qa-lab && npm install && ng serve` (port **4202**). Use **Run all** to mirror `test:gateway-suite`. Gateway CORS includes `http://localhost:4202` in `docker-compose.full.yml` by default.
+**QA Lab (navigateur) :** `cd qa-lab && npm install && ng serve` (port **4202**). Utiliser **Run all** pour reproduire `test:gateway-suite`. Le CORS de la gateway inclut `http://localhost:4202` dans `docker-compose.full.yml` par défaut.
 
-**Postman:** `postman/amaz-backend-e2e.postman_collection.json` (requires PoW variables).
+**Postman :** `postman/amaz-backend-e2e.postman_collection.json` (nécessite les variables PoW).
 
-**Docs:** Markdown under `docs/` (services, apps, plan mémoire, manuel). **PDFs:** from `Amaz_back` run `npm run docs:pdf` → output **`../docs/pdf/*.pdf`** (repo root).
+**Documentation :** Markdown sous `docs/` (services, apps, plan mémoire, manuel). **PDFs :** depuis `Amaz_back` lancer `npm run docs:pdf` → sortie **`../docs/pdf/*.pdf`** (racine du dépôt).
 
 ## Documentation
 
-- **Admin & security:** [docs/ADMIN_RUNBOOK.md](docs/ADMIN_RUNBOOK.md)
-- **UX / marketplace backlog:** [docs/UX_BACKLOG.md](docs/UX_BACKLOG.md)
+- **Admin et sécurité :** [docs/ADMIN_RUNBOOK.md](docs/ADMIN_RUNBOOK.md)
+- **Backlog UX / marketplace :** [docs/UX_BACKLOG.md](docs/UX_BACKLOG.md)
 - **Entités DB (CDC vs implémentation) :** [docs/CDC_ENTITES_DB.md](docs/CDC_ENTITES_DB.md), [docs/CDC_DB_CROSSCHECK.md](docs/CDC_DB_CROSSCHECK.md)
 
-## QA pack
+## Défis rencontrés
 
-- Smoke checks: `npm test`
-- Postman collection: `postman/amaz-backend-e2e.postman_collection.json`
-- Security review checklist: `docs/security-risk-review.md`
+### Checkout bloqué alors que les produits étaient visibles
+
+On a eu un cas assez trompeur pendant l'intégration front/back : le catalogue chargeait bien via `GET /api/v1/produits`, mais la confirmation de commande échouait avec `POST /api/v1/commandes -> 422 PRODUCT_NOT_FOUND` sur des produits pourtant visibles dans l'UI.
+
+La vraie cause n'était pas le panier Angular. Le problème venait de l'appel **inter-service** `order-service -> product-service` :
+
+- le client interne partagé signait certains `GET` avec un corps `undefined`,
+- Express normalisait ensuite le corps reçu côté service en `{}`,
+- la vérification HMAC interne comparait donc deux signatures différentes,
+- le `product-service` répondait `INTERNAL_AUTH_INVALID`,
+- puis le `order-service` transformait trop vite cet échec en `PRODUCT_NOT_FOUND`, ce qui envoyait l'équipe sur une fausse piste.
+
+Correctif appliqué :
+
+- normalisation du corps signé dans `shared/utils/internal-http.js` pour les requêtes sans payload,
+- conservation d'une erreur plus fidèle côté `order-service` quand l'amont échoue pour une autre raison qu'un vrai `404 produit`,
+- ajout d'un vrai test `POST /api/v1/commandes` dans `npm run test:gateway-suite`.
+
+Leçon projet : quand un produit est visible dans le catalogue mais « introuvable » au checkout, il faut vérifier aussi les **signatures inter-services** et pas seulement la base ou le front.
+
+## Pack QA
+
+- Smoke checks : `npm test`
+- Collection Postman : `postman/amaz-backend-e2e.postman_collection.json`
+- Checklist revue de sécurité : `docs/security-risk-review.md`
 
 ## Notes
 
-- Proof-of-work and rate limiting are enforced through shared middleware.
-- Token/session handling uses opaque signed tokens with DB-backed revocation.
-- Socket.IO server runs on messaging service (`MESSAGING_SERVICE_PORT`, namespace `/messages`).
+- La preuve de travail et le rate limiting sont appliqués via un middleware partagé.
+- La gestion des tokens/sessions utilise des tokens opaques signés avec révocation en base de données.
+- Le serveur Socket.IO tourne sur le messaging-service (`MESSAGING_SERVICE_PORT`, namespace `/messages`).
+- Les retours fonctionnent dans un service dédié PostgreSQL exposé via les routes gateway `/api/v1/retours` et `/api/v1/returns`.

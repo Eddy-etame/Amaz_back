@@ -1,8 +1,14 @@
+// Connexion MongoDB partagée (pilote natif `mongodb`, pas de Mongoose côté services).
+//
+// Comme pour Postgres, on garde une seule connexion (client + db) par process, créée
+// à la première demande. Les services produits/messagerie/ai s'en servent.
+
 const { MongoClient } = require('mongodb');
 
 let client = null;
 let db = null;
 
+// Renvoie la base, en se connectant à la première demande (lazy).
 async function getMongoDb() {
   if (db) return db;
 
@@ -16,6 +22,7 @@ async function getMongoDb() {
   return db;
 }
 
+// Ferme la connexion (tests / arrêt du service).
 async function closeMongo() {
   if (client) {
     await client.close();

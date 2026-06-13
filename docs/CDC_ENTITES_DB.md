@@ -4,7 +4,7 @@
 
 Le cahier des charges fourni par l’équipe est le fichier Word :
 
-`C:\Users\Mommy Jayce\Downloads\Entite et modelisation de la DB.docx`
+`Entite et modelisation de la DB.docx` (fichier Word conservé en dehors du dépôt)
 
 Ce format n’est pas exploitable directement dans le dépôt. **Pour une revue ligne à ligne avec le CDC officiel** :
 

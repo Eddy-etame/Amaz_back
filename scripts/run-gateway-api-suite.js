@@ -128,6 +128,7 @@ async function main() {
   }
 
   let token = null;
+  let createdOrderId = null;
 
   try {
     const h = await fetch(`${GATEWAY}/health`);
@@ -186,6 +187,36 @@ async function main() {
       const me = await fetchApi('GET', '/auth/me', { token });
       record(results, 'GET /api/v1/auth/me', me.status === 200, me.status);
 
+      const orderableProduct =
+        items.find((item) => Number(item?.stock || 0) > 1 && item?.id) ||
+        items.find((item) => Number(item?.stock || 0) > 0 && item?.id) ||
+        null;
+
+      if (orderableProduct) {
+        const createOrder = await fetchApi('POST', '/commandes', {
+          token,
+          json: {
+            articles: [{ productId: orderableProduct.id, quantity: 1 }],
+            methodePaiement: 'livraison',
+            adresseLivraison: {
+              street: '5 rue du Commerce',
+              postalCode: '21000',
+              city: 'Yaounde',
+              country: 'Cameroon'
+            }
+          }
+        });
+        createdOrderId = createOrder.data?.data?.id || null;
+        record(
+          results,
+          'POST /api/v1/commandes',
+          createOrder.status === 201 && Boolean(createdOrderId),
+          createOrder.status
+        );
+      } else {
+        record(results, 'POST /api/v1/commandes', false, 'skipped (no orderable product)');
+      }
+
       const orders = await fetchApi('GET', '/commandes', { token });
       record(
         results,
@@ -195,7 +226,7 @@ async function main() {
       );
 
       const orderItems = orders.data?.data?.items || [];
-      const firstOrderId = orderItems[0]?.id;
+      const firstOrderId = createdOrderId || orderItems[0]?.id;
       if (firstOrderId) {
         const oneOrd = await fetchApi('GET', `/commandes/${encodeURIComponent(firstOrderId)}`, { token });
         record(
@@ -204,8 +235,15 @@ async function main() {
           oneOrd.status === 200,
           oneOrd.status
         );
+
+        const cancelOrd = await fetchApi('PUT', `/commandes/${encodeURIComponent(firstOrderId)}/annuler`, {
+          token,
+          json: {}
+        });
+        record(results, 'PUT /api/v1/commandes/:id/annuler', cancelOrd.status === 200, cancelOrd.status);
       } else {
         record(results, 'GET /api/v1/commandes/:id', false, 'skipped (no orders)');
+        record(results, 'PUT /api/v1/commandes/:id/annuler', false, 'skipped (no orders)');
       }
 
       const wlMine = await fetchApi('GET', '/wishlists/me', { token });
@@ -281,8 +319,10 @@ async function main() {
       }
     } else {
       record(results, 'GET /api/v1/auth/me', false, 'no token');
+      record(results, 'POST /api/v1/commandes', false, 'no token');
       record(results, 'GET /api/v1/commandes', false, 'no token');
       record(results, 'GET /api/v1/commandes/:id', false, 'no token');
+      record(results, 'PUT /api/v1/commandes/:id/annuler', false, 'no token');
       record(results, 'GET /api/v1/wishlists/me', false, 'no token');
       record(results, 'PATCH /api/v1/wishlists/me (add)', false, 'no token');
       record(results, 'POST /api/v1/wishlists/me/share', false, 'no token');

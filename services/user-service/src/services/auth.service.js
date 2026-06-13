@@ -1,3 +1,12 @@
+// Cœur métier de l'authentification (user-service).
+//
+// Ce fichier ORCHESTRE : il ne fait pas le hachage ni la signature lui-même, il
+// assemble les briques (token.service, password.service, notification.service) avec
+// l'accès aux données (les `repositories/`). On y trouve register, login, refresh,
+// logout, introspect (utilisé par la gateway), les OTP, le reset de mot de passe et
+// les actions admin (approbation vendeur, blocage IP). Toutes les erreurs visibles
+// restent génériques pour ne pas révéler si un compte existe (anti-énumération).
+
 const { config } = require('../config');
 const { randomId } = require('../../../../shared/utils/ids');
 const { hmacHex, randomToken, randomDigits, sha256Hex, timingSafeHexEqual } = require('../../../../shared/utils/crypto');
@@ -101,6 +110,8 @@ function normalizeAddressPayload(payload = {}) {
   };
 }
 
+// Ouvre une session en base et émet un couple de tokens LIÉ à l'empreinte du client.
+// On ne stocke que les hashes des tokens (cf. token.service), jamais les tokens en clair.
 async function createSessionForUser({ user, fingerprintHash, ctx }) {
   const sessionId = randomId('sess');
   const pair = issueTokenPair({
@@ -123,6 +134,10 @@ async function createSessionForUser({ user, fingerprintHash, ctx }) {
   return pair;
 }
 
+// Inscription : valide les champs, vérifie l'unicité de l'email, hache le mot de passe
+// (sel + pepper + PBKDF2 via password.service), crée le compte (et le profil vendeur si
+// demandé), puis ouvre une session. Le rôle est forcé côté serveur (on ne fait pas
+// confiance au rôle envoyé par le client) pour éviter une escalade de privilèges.
 async function register({ payload, fingerprintHash, ctx }) {
   const validation = requireFields(payload, ['email', 'password']);
   if (!validation.ok) {
@@ -258,6 +273,10 @@ async function register({ payload, fingerprintHash, ctx }) {
   };
 }
 
+// Connexion : retrouve l'utilisateur par email, vérifie le mot de passe à temps
+// constant (cf. password.service), puis ouvre une nouvelle session liée à l'empreinte.
+// En cas d'échec, message volontairement générique (« Identifiants incorrects ») pour
+// ne pas dire si c'est l'email ou le mot de passe qui est faux.
 async function login({ payload, fingerprintHash, ctx }) {
   const validation = requireFields(payload, ['email', 'password']);
   if (!validation.ok) {
@@ -784,6 +803,9 @@ async function removeAddress({ userId, addressId }) {
   };
 }
 
+// Introspection : c'est CE que la gateway appelle pour valider un Bearer. On vérifie
+// la signature et l'expiration du token, qu'il n'a pas été révoqué, que la session est
+// active et que l'empreinte correspond. Renvoie { active, ...identité } pour la gateway.
 async function introspect({ token, fingerprintHash }) {
   const validity = verifyAccessToken(token, fingerprintHash);
   if (!validity.valid) {
@@ -846,6 +868,9 @@ async function introspect({ token, fingerprintHash }) {
   };
 }
 
+// Rafraîchissement : on valide le refresh token, puis on ROTATIONNE la session (on
+// émet un nouveau couple de tokens et on invalide l'ancien refresh). Réutiliser un
+// ancien refresh déjà consommé est donc détecté/refusé (anti-rejeu).
 async function refresh({ payload, fingerprintHash, ctx }) {
   const validation = requireFields(payload, ['refreshToken']);
   if (!validation.ok) {

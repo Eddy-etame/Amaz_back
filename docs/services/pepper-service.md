@@ -1,31 +1,31 @@
-# Pepper Service
+# Service Pepper (Pepper Service)
 
-**Port:** 3006  
-**Purpose:** HMAC-based peppering for passwords and tokens. Used by user-service for secure password hashing.
+**Port :** 3006  
+**Rôle :** Peppering basé sur HMAC pour les mots de passe et les tokens. Utilisé par le user-service pour le hachage sécurisé des mots de passe.
 
-## Dependencies
+## Dépendances
 
-- None (no database)
+- Aucune (pas de base de données)
 
-## Environment Variables
+## Variables d'environnement
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| PEPPER_SERVICE_PORT | No | 3006 | HTTP port |
-| INTERNAL_SHARED_SECRET | Yes | - | Shared secret for internal auth |
-| PEPPER_MASTER_SECRET | Yes | - | Master secret for HMAC peppering |
+| Variable | Requis | Défaut | Description |
+|----------|--------|--------|-------------|
+| PEPPER_SERVICE_PORT | Non | 3006 | Port HTTP |
+| INTERNAL_SHARED_SECRET | Oui | - | Secret partagé pour l'auth interne |
+| PEPPER_MASTER_SECRET | Oui | - | Secret maître pour le peppering HMAC |
 
-## Main Routes
+## Routes principales
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /health | Liveness |
-| POST | /internal/pepper/hash | Hash value with context (password, token, otp) |
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| GET | /health | Vivacité |
+| POST | /internal/pepper/hash | Hacher une valeur avec un contexte (password, token, otp) |
 
-## Allowed Internal Callers
+## Appelants internes autorisés
 
 - user-service
 
-## Contexts
+## Contextes
 
-Allowed contexts for HMAC: `password`, `token`, `otp`.
+Contextes autorisés pour le HMAC : `password`, `token`, `otp`.
