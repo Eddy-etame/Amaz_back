@@ -52,7 +52,7 @@ function pickVendor(globalIndex) {
   return SEED_VENDORS[globalIndex % SEED_VENDORS.length];
 }
 
-/** `products-mock.store.ts` stores amounts in centimes (1/100 €). */
+/** Les produits historiques (products-legacy.json) stockent les montants en centimes (1/100 €). */
 function mockCentsToEuros(cents) {
   const c = Number(cents);
   if (!Number.isFinite(c) || c <= 0) {
@@ -82,36 +82,22 @@ function buildLowStockThreshold(index) {
   return pattern[index % pattern.length];
 }
 
-function resolveMonorepoRoot() {
-  if (process.env.MONOREPO_ROOT) {
-    return path.resolve(process.env.MONOREPO_ROOT);
-  }
-  // Amaz_back/db/mongo -> ../../.. = repo root (sibling `users/` app)
-  return path.resolve(__dirname, '../../..');
-}
-
 function parseLegacyProducts() {
-  const sourcePath = path.join(
-    resolveMonorepoRoot(),
-    'users/src/app/core/services/products-mock.store.ts'
-  );
-  const source = fs.readFileSync(sourcePath, 'utf8');
-  const match = source.match(
-    /signal<ProductMock\[\]>\(\s*\[(?<items>[\s\S]*?)\]\s*\);\s*readonly products/s
-  );
-
-  if (!match?.groups?.items) {
+  // Produits "historiques" du catalogue de démo, figés dans un JSON versionné.
+  // Avant, on parsait un fichier de l'app `users/` (products-mock.store.ts) ; ce
+  // fichier a été supprimé lors du nettoyage du front, ce qui cassait le seed. On
+  // lit donc maintenant une copie locale au backend : le seed est autonome et
+  // fonctionne après un simple clone, sans dépendre d'un autre dépôt.
+  const sourcePath = path.join(__dirname, 'products-legacy.json');
+  let source;
+  try {
+    source = fs.readFileSync(sourcePath, 'utf8');
+  } catch {
     throw new Error(
-      'Unable to parse users products mock store. Ensure users/src/app/core/services/products-mock.store.ts exists and contains the expected signal structure.'
+      'Impossible de lire db/mongo/products-legacy.json (produits de démo). Ce fichier doit être présent dans le dépôt.'
     );
   }
-
-  const evaluateProducts = new Function(
-    'Date',
-    `'use strict'; return [${match.groups.items}];`
-  );
-
-  return evaluateProducts(Date);
+  return JSON.parse(source);
 }
 
 const GEN_CATEGORIES = [
