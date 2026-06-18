@@ -1,0 +1,18 @@
+# Normalisation des fins de ligne.
+# On force LF dans le dépôt : c'est ce qu'attendent Linux et Docker. Sans ça, des
+# fichiers commités sous Windows arrivent en CRLF et cassent les scripts shell et
+# certains points d'entrée de conteneurs côté Linux (l'équipe réseau travaille sous Linux).
+* text=auto eol=lf
+
+# Scripts shell : toujours LF, sans exception.
+*.sh text eol=lf
+
+# Fichiers binaires : aucune conversion.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
