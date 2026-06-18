@@ -1,0 +1,41 @@
+# Bases de données pour le développement local : MySQL + MongoDB.
+# Usage : docker compose up -d   (puis `npm run db:bootstrap` pour migrations + seed).
+# Aucun secret ici (identifiants de dev) ; les vrais secrets restent dans .env.
+services:
+  mysql:
+    image: mysql:8
+    container_name: amaz-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: amaz_root
+      MYSQL_DATABASE: bd_final_projet_annuel
+      MYSQL_USER: amaz
+      MYSQL_PASSWORD: amaz
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      # On attend que MySQL réponde réellement avant de lancer le bootstrap.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mongo:
+    image: mongo:7.0
+    container_name: amaz-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand({ ping: 1 })\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mysql_data:
+  mongo_data:
