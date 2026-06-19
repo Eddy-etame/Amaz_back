@@ -387,6 +387,39 @@ services:
       mysql:
         condition: service_healthy
 
+  # --- Frontends Angular (build + service statique via nginx) ---
+  # Le contexte pointe vers les dépôts frères (../users, ../vendors, ../qa-lab) :
+  # cloner les dépôts dans un même dossier parent, à côté de Amaz_back.
+  users-app:
+    build:
+      context: ../users
+    container_name: amaz-users-app
+    restart: unless-stopped
+    ports:
+      - "4200:80"
+    depends_on:
+      - gateway
+
+  vendors-app:
+    build:
+      context: ../vendors
+    container_name: amaz-vendors-app
+    restart: unless-stopped
+    ports:
+      - "4201:80"
+    depends_on:
+      - gateway
+
+  qa-lab-app:
+    build:
+      context: ../qa-lab
+    container_name: amaz-qa-lab-app
+    restart: unless-stopped
+    ports:
+      - "4202:80"
+    depends_on:
+      - gateway
+
 volumes:
   mysql_data:
   mongo_data:
