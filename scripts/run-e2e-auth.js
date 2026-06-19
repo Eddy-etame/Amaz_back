@@ -22,8 +22,6 @@ const TEST_EMAIL = process.env.E2E_TEST_EMAIL || 'eddy.etame@enkoschools.com';
 const TEST_PASSWORDS = [
   process.env.E2E_TEST_PASSWORD,
   process.env.E2E_TEST_PASSWORD_ALT,
-  'Amaz@2026!',
-  'Amaz@2026!',
   'Amaz@2026!'
 ].filter((p, i, arr) => p && arr.indexOf(p) === i);
 
