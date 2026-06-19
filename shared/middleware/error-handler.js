@@ -12,16 +12,16 @@
 function errorHandler(err, req, res, _next) {
   const status = err.status || 500;
   const code = err.code || 'INTERNAL_ERROR';
-  // MySQL undefined_column â€” often stale DB vs code (run npm run db:bootstrap from Amaz_back)
-  const pgMissingColumn = code === '42703';
-  const colHint =
-    pgMissingColumn && err.column ? ` (${String(err.column)})` : '';
+  // Colonne inconnue côté MySQL (souvent un schéma périmé par rapport au code) :
+  // le driver mysql2 renvoie le code 'ER_BAD_FIELD_ERROR' (errno 1054).
+  const missingColumn = code === 'ER_BAD_FIELD_ERROR' || err.errno === 1054;
+  const colHint = missingColumn && err.column ? ` (${String(err.column)})` : '';
   const message =
     status >= 500
-      ? pgMissingColumn
-        ? `SchÃ©ma base de donnÃ©es incomplet (colonne manquante${colHint}). Si vous utilisez Docker: npm run db:bootstrap:docker. Sinon: npm run db:bootstrap (mÃªme MySQL que les conteneurs, ex. localhost:5432 â†’ amaz-MySQL).`
+      ? missingColumn
+        ? `Schéma base de données incomplet (colonne manquante${colHint}). Avec Docker : npm run db:bootstrap:docker. Sinon : npm run db:bootstrap (même base MySQL que les conteneurs).`
         : 'Erreur interne'
-      : err.publicMessage || err.message || 'Erreur requÃªte';
+      : err.publicMessage || err.message || 'Erreur requête';
 
   if (status >= 500) {
     // eslint-disable-next-line no-console

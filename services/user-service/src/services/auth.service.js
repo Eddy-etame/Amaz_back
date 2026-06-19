@@ -494,7 +494,7 @@ async function addBlockedIpAdmin({ ipAddress, reason, adminUserId, ctx }) {
       blockedBy: adminUserId
     });
   } catch (err) {
-    if (err.code === '23505') {
+    if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062) {
       return {
         status: 409,
         body: {
