@@ -136,6 +136,14 @@ services:
       PRODUCT_SERVICE_PORT: 3002
       MONGO_URI: mongodb://mongo:27017
       MONGO_DB_NAME: amaz_db
+      # MySQL : indispensable pour vérifier le statut d'approbation du vendeur (table vendors)
+      # à la création/modification d'un produit (middleware requireApprovedVendor). Sans ces
+      # variables, le pool partagé retombe sur localhost:3306 -> ECONNREFUSED dans le conteneur.
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: amaz
+      MYSQL_PASSWORD: amaz
+      MYSQL_DATABASE: bd_final_projet_annuel
       INTERNAL_SHARED_SECRET: ${INTERNAL_SHARED_SECRET:-change-this-internal-secret}
     depends_on:
       mongo:

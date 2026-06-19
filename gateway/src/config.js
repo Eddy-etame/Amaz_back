@@ -65,6 +65,7 @@ const config = {
     user: normalizeMicroserviceBaseUrl(process.env.USERS_SERVICE_URL || 'http://localhost:3001'),
     product: normalizeMicroserviceBaseUrl(process.env.PRODUCTS_SERVICE_URL || 'http://localhost:3002'),
     order: normalizeMicroserviceBaseUrl(process.env.ORDERS_SERVICE_URL || 'http://localhost:3003'),
+    returns: normalizeMicroserviceBaseUrl(process.env.RETURNS_SERVICE_URL || 'http://localhost:3008'),
     messaging: normalizeMicroserviceBaseUrl(process.env.MESSAGING_SERVICE_URL || 'http://localhost:3004'),
     ai: normalizeMicroserviceBaseUrl(process.env.AI_SERVICE_URL || 'http://localhost:3005'),
     pepper: normalizeMicroserviceBaseUrl(process.env.PEPPER_SERVICE_URL || 'http://localhost:3006'),

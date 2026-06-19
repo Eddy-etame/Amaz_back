@@ -405,6 +405,23 @@ function createApp() {
     }
   });
 
+  app.use('/api/v1/retours', async (req, res, next) => {
+    try {
+      await authMiddleware(req, res, async () => {
+        await forwardProxy({
+          req,
+          res,
+          serviceBaseUrl: config.services.returns,
+          targetPath: normalizeDownstreamPath(req.originalUrl),
+          internalSecret: config.internalSharedSecret,
+          serviceName: 'returns'
+        });
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use('/api/v1/orders', async (req, res, next) => {
     try {
       const targetPath = mapAlias(normalizeDownstreamPath(req.originalUrl), '/orders', '/commandes');
