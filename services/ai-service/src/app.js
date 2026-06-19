@@ -64,20 +64,37 @@ function createApp() {
       const userId = String(req.headers['x-auth-user-id'] || '');
       const { products, aiLogs } = await getCollections();
 
-      const filter = query
+      // La requête vient de l'utilisateur : on échappe les caractères spéciaux des regex
+      // pour éviter toute injection d'expression régulière côté MongoDB.
+      const motCle = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const matchFilter = query
         ? {
             $or: [
-              { title: { $regex: query, $options: 'i' } },
-              { description: { $regex: query, $options: 'i' } },
-              { category: { $regex: query, $options: 'i' } }
+              { title: { $regex: motCle, $options: 'i' } },
+              { description: { $regex: motCle, $options: 'i' } },
+              { category: { $regex: motCle, $options: 'i' } }
             ]
           }
-        : {};
-      const items = await products
-        .find(filter)
-        .sort({ createdAt: -1 })
-        .limit(8)
-        .toArray();
+        : null;
+
+      const LIMITE = 8;
+      const matched = matchFilter
+        ? await products.find(matchFilter).sort({ createdAt: -1 }).limit(LIMITE).toArray()
+        : [];
+
+      // Un moteur de recommandation ne doit jamais renvoyer une liste vide : si la recherche
+      // par mot-clé ne suffit pas (terme inconnu ou requête vide), on complète avec les
+      // produits les mieux notés puis les plus récents, sans doublon.
+      let items = matched;
+      if (items.length < LIMITE) {
+        const dejaVus = items.map((p) => p.id).filter(Boolean);
+        const complement = await products
+          .find(dejaVus.length ? { id: { $nin: dejaVus } } : {})
+          .sort({ rating: -1, createdAt: -1 })
+          .limit(LIMITE - items.length)
+          .toArray();
+        items = items.concat(complement);
+      }
 
       const recommendations = items.map((item) => ({
         id: item.id || item._id?.toString(),
