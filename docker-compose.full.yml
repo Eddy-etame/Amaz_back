@@ -359,6 +359,12 @@ services:
       context: .
       dockerfile: admin-service/Dockerfile
     container_name: amaz-admin-service
+    # AdminJS = back-office d'exploitation (pas dans le chemin de l'API). On le met
+    # derrière un profil : `docker compose up` démarre l'API + les bases (tout le
+    # fonctionnel), et AdminJS se lance à la demande :
+    #   docker compose -f docker-compose.full.yml --profile admin up -d admin-service
+    profiles:
+      - admin
     restart: unless-stopped
     ports:
       - "3010:3010"
