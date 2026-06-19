@@ -7,7 +7,7 @@ COPY shared ./shared
 COPY gateway ./gateway
 COPY services ./services
 
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 ENV NODE_ENV=production
 

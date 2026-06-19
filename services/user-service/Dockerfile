@@ -9,7 +9,7 @@ COPY gateway ./gateway
 COPY services ./services
 
 # Install all dependencies (workspace)
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 ENV NODE_ENV=production
 
