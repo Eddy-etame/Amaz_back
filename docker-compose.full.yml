@@ -12,8 +12,8 @@ services:
       MYSQL_DATABASE: bd_final_projet_annuel
       MYSQL_USER: amaz
       MYSQL_PASSWORD: amaz
-    ports:
-      - "3306:3306"
+    # Pas de publication de 3306 vers l'hôte : les services accèdent à MySQL par le réseau
+    # Docker interne (MYSQL_HOST=mysql). Évite tout conflit avec un MySQL déjà installé sur l'hôte.
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:

@@ -87,7 +87,7 @@ async function ensureAmazDatabase() {
     );
     if (userRows.length === 0) {
       const safePass = (amazPass || 'amaz').replace(/'/g, "''");
-      await pool.query('CREATE USER IF NOT EXISTS ?@\'%' IDENTIFIED BY ?', [amazUser, safePass]);
+      await pool.query(`CREATE USER IF NOT EXISTS '${amazUser}'@'%' IDENTIFIED BY '${safePass}'`);
       console.log(`  Created user ${amazUser}`);
     }
 
@@ -100,7 +100,7 @@ async function ensureAmazDatabase() {
       console.log(`  Created database ${dbSafe}`);
     }
 
-    await pool.query(`GRANT ALL PRIVILEGES ON \`${dbSafe}\`.* TO ?@'%'`, [amazUser]);
+    await pool.query(`GRANT ALL PRIVILEGES ON \`${dbSafe}\`.* TO '${amazUser}'@'%'`);
     await pool.query('FLUSH PRIVILEGES');
   } finally {
     await pool.end();
@@ -115,7 +115,22 @@ async function runMigrations(pool) {
       continue;
     }
     const sql = fs.readFileSync(filePath, 'utf8');
-    await pool.query(sql);
+    // Le pool partagé n'active pas `multipleStatements` (par sécurité). On découpe donc
+    // le fichier en instructions (séparateur `;`), on enlève les lignes de commentaire
+    // `--`, et on exécute chaque instruction non vide une par une.
+    // On retire d'ABORD les lignes de commentaire `--` (certaines contiennent un `;`),
+    // PUIS on découpe sur `;`. L'inverse casserait la découpe.
+    const withoutComments = sql
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('--'))
+      .join('\n');
+    const statements = withoutComments
+      .split(';')
+      .map((stmt) => stmt.trim())
+      .filter((stmt) => stmt.length > 0);
+    for (const stmt of statements) {
+      await pool.query(stmt);
+    }
     console.log(`  Ran ${file}`);
   }
 }
@@ -150,7 +165,7 @@ async function main() {
         console.error('Could not create MySQL database/user:', superErr.message);
         console.error('\nTo fix manually: connect as MySQL superuser and run:');
         console.error('  CREATE DATABASE amaz_db;');
-        console.error('  CREATE USER IF NOT EXISTS \'amaz\'@\'%' IDENTIFIED BY \'amaz\';');
+        console.error("  CREATE USER IF NOT EXISTS 'amaz'@'%' IDENTIFIED BY 'amaz';");
         console.error('  GRANT ALL PRIVILEGES ON amaz_db.* TO \'amaz\'@\'%\';');
         console.error('\nOr recreate the MySQL volume and retry:');
         console.error('  docker compose -f docker-compose.full.yml down -v');

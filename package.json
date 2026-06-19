@@ -18,6 +18,7 @@
     "start:ai": "npm --workspace ai-service run start",
     "start:pepper": "npm --workspace pepper-service run start",
     "start:admin": "npm --workspace admin-service run start",
+    "start:returns": "npm --workspace returns-service run start",
     "db:mongo:init": "node ./db/mongo/init.js",
     "db:mysql:seed": "node ./db/mysql/seed.js",
     "db:mysql:seed:docker": "docker compose --profile tools run --rm seed",
