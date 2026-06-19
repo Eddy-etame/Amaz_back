@@ -104,6 +104,12 @@ const start = async () => {
   AdminJS.registerAdapter({ Database, Resource });
 
   const db = await new Adapter('mysql', {
+    // knex (client mysql) lit host/port/user/password et n'extrait PAS l'hôte du
+    // connectionString -> on les passe explicitement, sinon il tente 127.0.0.1.
+    host: MYSQL_HOST,
+    port: MYSQL_PORT,
+    user: MYSQL_USER,
+    password: MYSQL_PASSWORD,
     connectionString,
     database: MYSQL_DATABASE
   }).init();
