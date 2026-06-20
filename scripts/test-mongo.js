@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { getMongoDb } = require('./shared/db/mongo');
+const { getMongoDb } = require('../shared/db/mongo');
 
 async function testMongo() {
   try {

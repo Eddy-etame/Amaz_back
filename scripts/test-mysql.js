@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { getMysqlPool } = require('./shared/db/mysql');
+const { getMysqlPool } = require('../shared/db/mysql');
 
 async function testConnection() {
   try {
