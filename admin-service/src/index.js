@@ -22,12 +22,12 @@ const { randomId } = require('../../shared/utils/ids.js');
 const PORT = Number(process.env.ADMIN_SERVICE_PORT || 3010);
 const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3001';
 const INTERNAL_SHARED_SECRET = process.env.INTERNAL_SHARED_SECRET || '';
-const MYSQL_HOST = process.env.MYSQL_HOST || process.env.PG_HOST || 'localhost';
-const MYSQL_PORT = Number(process.env.MYSQL_PORT || process.env.PG_PORT || 3306);
-const MYSQL_USER = process.env.MYSQL_USER || process.env.PG_USER || 'amaz';
-const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || process.env.PG_PASSWORD || '';
+const MYSQL_HOST = process.env.MYSQL_HOST || 'localhost';
+const MYSQL_PORT = Number(process.env.MYSQL_PORT || 3306);
+const MYSQL_USER = process.env.MYSQL_USER || 'amaz';
+const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || '';
 const MYSQL_DATABASE =
-  process.env.MYSQL_DATABASE || process.env.MYSQL_DB || process.env.PG_DATABASE || process.env.PG_DB || 'amaz_db';
+  process.env.MYSQL_DATABASE || process.env.MYSQL_DB || 'bd_final_projet_annuel';
 
 const connectionString =
   process.env.DATABASE_URL ||

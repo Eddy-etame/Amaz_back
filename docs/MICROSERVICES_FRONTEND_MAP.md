@@ -1,6 +1,6 @@
-﻿# Microservices and storefront (users) mapping
+# Microservices and storefront (users) mapping
 
-**Narrative / mÃ©moire (FR) :** see [`PLAN_MEMOIRE_DOCUMENTATION.md`](PLAN_MEMOIRE_DOCUMENTATION.md). **PDF bundle:** run `npm run docs:pdf` from `Amaz_back` â†’ files in repo root [`docs/pdf/`](../../docs/pdf/).
+**Narrative / mémoire (FR) :** see [`PLAN_MEMOIRE_DOCUMENTATION.md`](PLAN_MEMOIRE_DOCUMENTATION.md). **PDF bundle:** run `npm run docs:pdf` from `Amaz_back` → files in repo root [`docs/pdf/`](../../docs/pdf/).
 
 Single entry from Angular: [`users/src/app/core/services/gateway-api.service.ts`](../../users/src/app/core/services/gateway-api.service.ts) (base URL + path). **Proof-of-Work** and auth headers are added by [`users/src/app/core/http/security-headers.interceptor.ts`](../../users/src/app/core/http/security-headers.interceptor.ts) for gateway calls.
 
@@ -10,7 +10,7 @@ Per-service deep dives: [`docs/services/README.md`](services/README.md).
 
 | Service | Responsibility | Persistence | Key HTTP (behind gateway) | Primary frontend touchpoints |
 |--------|----------------|-------------|---------------------------|------------------------------|
-| **gateway** | PoW gate, routing, auth forward, `X-Request-Id` | â€” | `/api/v1/*` | All `HttpClient` calls to `environment.apiBaseUrl` |
+| **gateway** | PoW gate, routing, auth forward, `X-Request-Id` | — | `/api/v1/*` | All `HttpClient` calls to `environment.apiBaseUrl` |
 | **user-service** | Register, login, JWT, profiles | MySQL | `/auth/*`, `/users/*` (as proxied) | `AuthService`, login/register routes, `UserSessionStore` |
 | **product-service** | Catalog CRUD, listings, wishlists | MongoDB `products`, wishlist collections | `/produits`, `/produits/suggest`, `/produits/:id`, `/wishlists/*` | `ProductsService`, `ProductCatalogStore`, PLP/PDP, `WishlistStore`, top-bar suggest |
 | **order-service** | Orders lifecycle, stock coordination | MySQL | `/commandes/*` | `OrdersService`, `OrdersStateStore`, checkout, order history |
@@ -50,6 +50,6 @@ sequenceDiagram
 
 ## Catalog seed and scale
 
-- Mongo seed: `npm run db:mongo:init` (from `Amaz_back`) â€” legacy mock products plus generated rows (`db/mongo/init.js`).
+- Mongo seed: `npm run db:mongo:init` (from `Amaz_back`) — legacy mock products plus generated rows (`db/mongo/init.js`).
 - Storefront loads up to **500** products per `GET /produits` (see product-service limit cap and `ProductCatalogStore`).
 

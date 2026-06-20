@@ -33,8 +33,8 @@ function main() {
     'services/order-service/src/app.js',
     'services/messaging-service/src/app.js',
     'services/pepper-service/src/app.js',
-    'db/MySQL/migrations/001_init.sql',
-    'db/MySQL/migrations/007_order_status_history.sql',
+    'db/mysql/migrations/001_init.sql',
+    'db/mysql/migrations/007_order_status_history.sql',
     'docs/openapi/gateway-v1.yaml',
     'db/mongo/init.js',
     'scripts/health-and-contract-smoke.js',
@@ -112,7 +112,7 @@ function main() {
     failures
   );
 
-  const sqlSchema = readFileSafe(path.join(root, 'db/MySQL/migrations/001_init.sql')) || '';
+  const sqlSchema = readFileSafe(path.join(root, 'db/mysql/migrations/001_init.sql')) || '';
   assert(
     hasAllSnippets(sqlSchema, [
       'CREATE TABLE IF NOT EXISTS users',
@@ -126,7 +126,7 @@ function main() {
     failures
   );
 
-  const histMigration = readFileSafe(path.join(root, 'db/MySQL/migrations/007_order_status_history.sql')) || '';
+  const histMigration = readFileSafe(path.join(root, 'db/mysql/migrations/007_order_status_history.sql')) || '';
   assert(
     hasAllSnippets(histMigration, ['order_status_history', 'CREATE TABLE IF NOT EXISTS order_status_history']),
     '007_order_status_history migration missing or incomplete',
