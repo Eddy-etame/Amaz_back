@@ -567,6 +567,10 @@ function createApp() {
     }
   });
 
+  // Réservation de stock (appelée par le order-service lors d'une commande). Le findOneAndUpdate
+  // est ATOMIQUE : la condition `stock >= quantity` et le décrément `$inc: -quantity` se font en
+  // une seule opération Mongo, ce qui empêche la survente si deux commandes arrivent en même
+  // temps (pas de race condition). 409 si le stock est insuffisant.
   app.post('/internal/produits/:id/reserve', requireOrderServiceCaller, async (req, res, next) => {
     try {
       const quantity = Math.max(1, Number(req.body?.quantity || 0));
@@ -609,6 +613,7 @@ function createApp() {
     }
   });
 
+  // Libération de stock (annulation de commande) : on ré-incrémente le stock du produit.
   app.post('/internal/produits/:id/release', requireOrderServiceCaller, async (req, res, next) => {
     try {
       const quantity = Math.max(1, Number(req.body?.quantity || 0));
