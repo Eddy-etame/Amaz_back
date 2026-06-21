@@ -178,6 +178,9 @@ function createApp() {
     })
   );
 
+  // Catalogue : liste/recherche paginée des produits. On construit dynamiquement le filtre Mongo
+  // depuis les paramètres de requête (texte q, catégorie, ville, fourchette de prix, statut,
+  // vendeur), puis on trie et on pagine.
   app.get('/produits', async (req, res, next) => {
     try {
       const collection = await getProductsCollection();
@@ -222,6 +225,8 @@ function createApp() {
       const authUserId = String(req.headers['x-auth-user-id'] || '').trim();
       const authRole = String(req.headers['x-auth-role'] || '').trim();
       const qVendorId = String(req.query.vendorId || '').trim();
+      // Un vendeur (ou un admin) qui consulte SES propres annonces voit aussi les produits en
+      // rupture ; les autres visiteurs ne voient que les produits réellement disponibles (stock > 0).
       const vendorListingSelf =
         qVendorId &&
         ((authRole === 'vendor' && authUserId === qVendorId) || authRole === 'admin');
