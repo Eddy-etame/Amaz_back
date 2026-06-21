@@ -10,19 +10,23 @@ const { randomId } = require('../../../shared/utils/ids');
 const { config } = require('./config');
 const { requireApprovedVendor } = require('./middlewares/approved-vendor');
 
+// Raccourci vers la collection MongoDB des produits.
 async function getProductsCollection() {
   const db = await getMongoDb();
   return db.collection('products');
 }
 
+// Filtre Mongo par identifiant : on accepte un ObjectId Mongo natif OU notre champ `id` métier.
 function normalizeProductId(id) {
   return ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
 }
 
+// Échappe les métacaractères d'une regex (recherche utilisateur -> anti-injection Mongo).
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Middleware : réserve la route aux vendeurs (et admins), 403 sinon.
 function requireVendorRole(req, res, next) {
   const role = (req.headers['x-auth-role'] || '').toString().trim();
   if (!['vendor', 'admin'].includes(role)) {
@@ -38,6 +42,7 @@ function requireVendorRole(req, res, next) {
   return next();
 }
 
+// Middleware : endpoints internes (réservation de stock) réservés au seul order-service.
 function requireOrderServiceCaller(req, res, next) {
   if (req.internalCaller !== 'order-service') {
     return res.status(403).json({
@@ -52,6 +57,8 @@ function requireOrderServiceCaller(req, res, next) {
   return next();
 }
 
+// Met en forme un produit Mongo pour le front. Les champs sont doublés FR/EN (titre/title,
+// prix/price...) pour que les apps Angular utilisent l'un ou l'autre sans adaptation.
 function mapProduct(product) {
   return {
     id: product.id || product._id?.toString(),
