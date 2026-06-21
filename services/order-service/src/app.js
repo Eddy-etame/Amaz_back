@@ -11,12 +11,15 @@ const { config } = require('./config');
 const ORDER_STATUSES = ['confirmed', 'preparing', 'shipped', 'delivered', 'cancelled'];
 const CANCELLABLE_STATUSES = new Set(['confirmed', 'preparing']);
 
+// Date de livraison estimée : entre 3 et 7 jours (valeur de démo, pas de vrai transporteur).
 function estimateDeliveryIso() {
   const days = 3 + Math.floor(Math.random() * 5);
   const date = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
   return date.toISOString();
 }
 
+// Normalise les articles de la commande : on accepte plusieurs formes de payload
+// (items / articles, ou un produit unique) et on écarte ceux sans productId.
 function parseOrderItems(payload = {}) {
   const fromArray = Array.isArray(payload.items) ? payload.items : payload.articles;
   const sourceItems =
@@ -34,6 +37,8 @@ function parseOrderItems(payload = {}) {
     .filter((item) => item.productId);
 }
 
+// Transforme une ligne SQL en objet commande pour le front. Les champs items et
+// shipping_address sont stockés en JSON texte : on les parse en se protégeant des erreurs.
 function mapOrderRow(row) {
   let rawItems = [];
   try {
@@ -89,6 +94,7 @@ function mapOrderRow(row) {
   };
 }
 
+// Récupère le contact de l'acheteur (pour la notification e-mail de la commande).
 async function fetchUserContact(userId) {
   const pool = getMysqlPool();
   const [rows] = await pool.query(
@@ -98,6 +104,8 @@ async function fetchUserContact(userId) {
   return rows[0] || null;
 }
 
+// Envoie l'e-mail de notification via le user-service (appel interne signé). Best-effort :
+// le .catch() ignore l'échec pour ne pas bloquer la commande si l'e-mail ne part pas.
 async function sendOrderNotification({
   type, orderId, userId, userEmail, userName, total, requestId
 }) {
@@ -119,6 +127,8 @@ async function sendOrderNotification({
   }).catch(() => undefined);
 }
 
+// Vue de la commande selon le rôle : un vendeur ne voit QUE ses propres articles
+// (filtrés par vendorId), avec un total recalculé sur ces articles — pas la commande entière.
 function mapOrderForRole(row, role, authUserId) {
   const mapped = mapOrderRow(row);
   if (role !== 'vendor') return mapped;
