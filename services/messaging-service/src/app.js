@@ -249,12 +249,17 @@ function createMessagingServer() {
   app.use(notFoundHandler);
   app.use(errorHandler);
 
+  // Serveur HTTP partagé entre l'API REST (Express) et le temps réel (Socket.IO).
   const server = http.createServer(app);
   const io = new Server(server, {
     cors: { origin: true, credentials: true }
   });
 
+  // Namespace dédié à la messagerie (ex. '/messages').
   const namespace = io.of(config.socketNamespace);
+
+  // Authentification du socket : on n'accepte que les connexions présentant un userId
+  // et un rôle valide ('user' ou 'vendor'), sinon la connexion est refusée.
   namespace.use((socket, next) => {
     const userId = String(socket.handshake.auth?.userId || socket.handshake.auth?.vendorId || '').trim();
     const role = String(socket.handshake.auth?.role || '').trim();
@@ -270,8 +275,11 @@ function createMessagingServer() {
 
   namespace.on('connection', (socket) => {
     const auth = socket.data.auth;
+    // Chaque client rejoint sa room privée 'user:<id>' ou 'vendor:<id>' : c'est ce qui
+    // permet d'adresser un message au bon destinataire uniquement.
     socket.join(`${auth.role}:${auth.userId}`);
 
+    // Message envoyé en direct via le socket : on le persiste, puis on le pousse en temps réel.
     socket.on('message.new', async (payload) => {
       try {
         const stored = await appendMessage({
@@ -281,6 +289,8 @@ function createMessagingServer() {
             role: auth.role
           }
         });
+        // On émet dans les deux rooms de la conversation (acheteur ET vendeur) pour que
+        // les deux côtés voient le message apparaître instantanément.
         namespace.to(`user:${stored.userId}`).emit('message.new', stored);
         namespace.to(`vendor:${stored.vendorId}`).emit('message.new', stored);
       } catch (error) {
