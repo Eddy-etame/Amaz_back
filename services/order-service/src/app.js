@@ -179,6 +179,7 @@ async function loadStatusHistoryForOrder(pool, orderId, limit = 20) {
   return rows;
 }
 
+// Récupère un produit auprès du product-service (appel interne signé). 422 si introuvable.
 async function fetchProduct(productId, requestId) {
   const response = await internalFetch({
     baseUrl: config.productServiceUrl,
@@ -200,6 +201,8 @@ async function fetchProduct(productId, requestId) {
   return response.payload.data;
 }
 
+// Réserve le stock du produit côté product-service au moment de la commande.
+// Si le stock est insuffisant l'appel échoue (409) et la commande est refusée.
 async function reserveProductStock({ productId, quantity, requestId }) {
   const response = await internalFetch({
     baseUrl: config.productServiceUrl,
@@ -221,6 +224,7 @@ async function reserveProductStock({ productId, quantity, requestId }) {
   }
 }
 
+// Libère le stock réservé (ex. annulation de commande) : opération inverse de reserve.
 async function releaseProductStock({ productId, quantity, requestId }) {
   await internalFetch({
     baseUrl: config.productServiceUrl,
@@ -268,6 +272,9 @@ function createApp() {
     })
   );
 
+  // Création d'une commande (checkout). Déroulé : on valide les articles, puis pour chacun on
+  // vérifie le produit et on RÉSERVE son stock côté product-service ; ensuite on enregistre la
+  // commande en base. Si une étape échoue, on relâche le stock déjà réservé (rollback).
   const handlePostCommande = async (req, res, next) => {
     const userId = String(req.headers['x-auth-user-id'] || '').trim();
     if (!userId) {
@@ -295,6 +302,7 @@ function createApp() {
       });
     }
 
+    // reservedItems garde la trace du stock déjà réservé, pour pouvoir tout relâcher si la suite échoue.
     const reservedItems = [];
     try {
       const enrichedItems = [];
