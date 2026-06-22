@@ -1,3 +1,6 @@
+// Pepper-service : micro-service de sécurité dédié au « poivrage ». Il applique un secret maître
+// (HMAC) aux mots de passe/jetons. Le secret ne vit QUE dans ce service — jamais en base ni dans
+// les autres services, donc un vol de la base ne permet pas de recalculer les hash hors-ligne.
 const express = require('express');
 
 const { requestIdMiddleware } = require('../../../shared/middleware/request-id');

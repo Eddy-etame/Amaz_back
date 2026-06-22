@@ -1,3 +1,5 @@
+// Connexion MongoDB partagée : getMongoDb() renvoie une base unique (singleton) réutilisée par
+// les services qui manipulent le catalogue, les messages et les logs IA.
 const { MongoClient } = require('mongodb');
 
 let client = null;

@@ -1,3 +1,5 @@
+// Client HTTP interne : effectue un appel SIGNÉ d'un service vers un autre (ajoute les en-têtes
+// x-internal-* via internal-signature). Utilisé par la gateway et l'order-service.
 const { randomId } = require('./ids');
 const { signInternalRequest } = require('./internal-signature');
 

@@ -1,3 +1,5 @@
+// Pool de connexions MySQL partagé (driver mysql2). getMysqlPool() renvoie un pool unique
+// (singleton) réutilisé par tous les services qui lisent/écrivent dans MySQL.
 const mysql = require('mysql2/promise');
 
 let pool = null;

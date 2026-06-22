@@ -1,3 +1,6 @@
+// Signature des appels INTERNES entre services : construit une charge canonique
+// (service+méthode+chemin+timestamp+nonce+corps), la signe en HMAC, la vérifie en temps constant.
+// C'est ce qui permet à un service de faire confiance à un autre.
 const { hmacHex, sha256Hex, timingSafeHexEqual } = require('./crypto');
 
 function buildCanonicalPayload({ serviceName, method, path, timestamp, nonce, body }) {

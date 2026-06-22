@@ -1,3 +1,5 @@
+// Empreinte (fingerprint) de la requête : hash dérivé d'éléments du client, lié au PoW et au
+// jeton pour détecter un changement de contexte (anti-vol de session).
 const { sha256Hex } = require('./crypto');
 
 function buildFingerprint(req) {

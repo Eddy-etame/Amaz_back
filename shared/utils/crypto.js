@@ -1,3 +1,5 @@
+// Boîte à outils cryptographique partagée : SHA-256, HMAC, comparaison en TEMPS CONSTANT
+// (timingSafeHexEqual, anti-attaque temporelle), génération de jetons/sels aléatoires.
 const crypto = require('crypto');
 
 function sha256Hex(value) {

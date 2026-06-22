@@ -1,3 +1,5 @@
+// Service des jetons : crée et vérifie les jetons d'authentification (signés en HMAC, comparés en
+// temps constant via timingSafeHexEqual). C'est l'équivalent du jwt_maison vu en cours (Eval_JS).
 const { config } = require('../config');
 const { hmacHex, sha256Hex, timingSafeHexEqual, randomToken } = require('../../../../shared/utils/crypto');
 
