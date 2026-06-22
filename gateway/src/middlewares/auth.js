@@ -1,3 +1,5 @@
+// Middleware d'authentification de la gateway : valide le jeton Bearer auprès du user-service,
+// puis attache l'identité (req.auth) que le proxy transmettra au service via les en-têtes x-auth-*.
 const { buildFingerprint } = require('../../../shared/utils/fingerprint');
 const { internalFetch } = require('../../../shared/utils/internal-http');
 

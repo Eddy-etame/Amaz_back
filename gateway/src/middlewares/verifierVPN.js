@@ -1,3 +1,5 @@
+// Middleware « filtrage VPN » : refuse (403) les requêtes dont l'IP figure dans une liste d'IP
+// de VPN connues. Volontairement simple (liste codée en dur) — garde-fou de démo.
 function verifierVPN(req, res, next) {
 
   const adresseIP = req.ip;

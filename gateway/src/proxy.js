@@ -1,3 +1,6 @@
+// Proxy de la gateway : relaie une requête cliente vers le bon micro-service.
+// Signe l'appel en HMAC (en-têtes x-internal-*) et transmet le contexte d'auth (x-auth-*),
+// pour que le micro-service fasse confiance à l'appel et sache QUI est l'utilisateur.
 const { randomId } = require('../../shared/utils/ids');
 const { signInternalRequest } = require('../../shared/utils/internal-signature');
 

@@ -1,3 +1,6 @@
+// Confiance INTERNE (côté micro-service) : vérifie qu'un appel vient bien d'un service de
+// confiance via la signature HMAC (x-internal-*). Un nonce à usage unique empêche le rejeu.
+// Sans signature valide -> INTERNAL_AUTH_REQUIRED.
 const { verifyInternalRequest } = require('../utils/internal-signature');
 
 function createInternalAuthMiddleware(options = {}) {

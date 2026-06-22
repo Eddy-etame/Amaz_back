@@ -1,3 +1,5 @@
+// Limiteur de débit : compte les requêtes par IP sur une fenêtre de temps et renvoie 429
+// au-delà du maximum. Protège contre les abus / floods.
 const compteurRequetes = {};
 const listeNoire = [];
 

@@ -1,3 +1,5 @@
+// Configuration de la gateway : lit l'environnement (ports, URLs des services, secrets, limites)
+// et expose un objet config unique utilisé dans toute la gateway.
 function parseOrigins(raw) {
   return String(raw || '')
     .split(',')

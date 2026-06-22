@@ -1,3 +1,5 @@
+// Validation d'entrée de la gateway : contrôle la forme des corps /api/v1/* (champs, types)
+// avant de relayer, pour rejeter tôt (400) les requêtes malformées.
 function normalizeApiPath(rawPath) {
   const path = String(rawPath || '').split('?')[0] || '/';
   if (!path.startsWith('/api/v1')) {
