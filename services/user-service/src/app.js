@@ -1,3 +1,5 @@
+// Micro-service UTILISATEURS / AUTH : inscription, connexion, sessions, adresses, notifications,
+// blocage d'IP. Émet les jetons (HMAC) et délègue le hachage au pepper-service. Base : MySQL.
 const express = require('express');
 
 const { requestIdMiddleware } = require('../../../shared/middleware/request-id');

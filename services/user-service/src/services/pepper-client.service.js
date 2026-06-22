@@ -1,3 +1,5 @@
+// Client du pepper-service : demande le « poivrage » HMAC d'une valeur. Bascule sur un repli (secret
+// client) si le service est injoignable — à éviter en prod (les hash deviennent incompatibles).
 const { config } = require('../config');
 const { internalFetch } = require('../../../../shared/utils/internal-http');
 const { hmacHex } = require('../../../../shared/utils/crypto');

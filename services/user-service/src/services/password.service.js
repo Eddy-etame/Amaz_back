@@ -1,3 +1,5 @@
+// Hachage des mots de passe : applique le SEL (par utilisateur) + le PEPPER (via pepper-service),
+// puis vérifie en TEMPS CONSTANT. Le mot de passe en clair n'est jamais stocké ni comparé tel quel.
 const { hashPassword, makeSalt, timingSafeHexEqual } = require('../../../../shared/utils/crypto');
 const { derivePepper } = require('./pepper-client.service');
 

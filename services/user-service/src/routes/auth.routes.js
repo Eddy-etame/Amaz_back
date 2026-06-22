@@ -1,3 +1,5 @@
+// Routes HTTP du user-service (auth) : mappe les endpoints (/auth/register, /auth/login, /auth/me…)
+// vers les fonctions de auth.service, après vérification de la signature interne.
 const express = require('express');
 const { buildFingerprint } = require('../../../../shared/utils/fingerprint');
 const { sendEmail, sendTransactionalEmail } = require('../services/notification.service');

@@ -1,3 +1,5 @@
+// Micro-service IA : recommandations produits (recherche par mots-clés + complétion populaire, JAMAIS
+// vide ; requête échappée anti-injection regex) et scoring anti-bot de /bot/auth. Base : MongoDB.
 const express = require('express');
 
 const { requestIdMiddleware } = require('../../../shared/middleware/request-id');
