@@ -400,7 +400,8 @@ services:
   # cloner les dépôts dans un même dossier parent, à côté de Amaz_back.
   users-app:
     build:
-      context: ../users
+      context: ..
+      dockerfile: users/Dockerfile
     container_name: amaz-users-app
     restart: unless-stopped
     ports:
@@ -410,7 +411,8 @@ services:
 
   vendors-app:
     build:
-      context: ../vendors
+      context: ..
+      dockerfile: vendors/Dockerfile
     container_name: amaz-vendors-app
     restart: unless-stopped
     ports:
