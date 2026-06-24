@@ -112,13 +112,15 @@ Toujours depuis `Amaz_back/` :
 docker compose -f docker-compose.full.yml up -d --build
 ```
 
-Cette commande construit puis démarre **14 conteneurs** : les 2 bases, les 9 services
-back-end, la passerelle et les **3 front-ends**.
+Cette commande construit puis démarre **15 conteneurs** : les 2 bases (MySQL, MongoDB), les 9 services back-end, la passerelle (gateway), le back-office d'administration (AdminJS), et les **3 front-ends**.
 
 > ⏱️ Le **premier** lancement télécharge les images et compile les 3 applications Angular :
 > comptez **plusieurs minutes**. Les fois suivantes, c'est quasi instantané (cache Docker).
 
-Vérifier que tout est « healthy » :
+### 🚀 Initialisation et Seeding Automatiques
+Le processus de **bootstrap** (création des tables, migrations et chargement des 455 produits du catalogue) s'exécute désormais **automatiquement** lors du démarrage. Vous n'avez aucune commande manuelle à lancer pour peupler votre base !
+
+Vérifier que tout est en cours de démarrage et « healthy » :
 
 ```bash
 docker compose -f docker-compose.full.yml ps
@@ -126,18 +128,22 @@ docker compose -f docker-compose.full.yml ps
 
 ---
 
-## 7. Étape 5 — Initialiser la base (à faire UNE fois)
+## 7. Étape 5 — Mise à jour et Réinitialisation (Idempotence)
 
-Au premier démarrage, les bases sont vides. On lance le **bootstrap**, qui crée les tables
-(migrations), insère les comptes de démonstration et **charge les 455 produits du catalogue** :
+Grâce à la mise à jour du script de bootstrap, l'initialisation de la base est **totalement idempotente**. Cela signifie que :
 
+*   **Si vous n'avez jamais cloné (nouvelle installation)** : La base est créée, configurée et entièrement peuplée automatiquement dès le premier `docker compose up`.
+*   **Si vous avez déjà cloné (mise à jour)** : Récupérez simplement les dernières modifications (`git pull`) et relancez la plateforme avec `docker compose -f docker-compose.full.yml up -d --build`. Le système détectera les tables et colonnes existantes, appliquera uniquement les nouvelles migrations sans écraser vos données existantes, et s'assurera que le catalogue de produits est à jour.
+
+### Réinitialisation complète (repartir de zéro)
+Si vous souhaitez vider complètement les bases de données et re-sécuriser le catalogue à son état d'origine, exécutez :
 ```bash
-docker compose -f docker-compose.full.yml --profile tools run --rm bootstrap
-```
+# Arrêter la plateforme et supprimer les volumes de stockage des bases de données
+docker compose -f docker-compose.full.yml down -v
 
-À la fin, vous devez voir le récapitulatif (migrations appliquées, utilisateurs créés,
-produits insérés). Cette étape n'est à refaire que si vous repartez d'une base vierge
-(voir « Réinitialisation » plus bas).
+# Relancer : le bootstrap automatique se chargera de tout recréer proprement
+docker compose -f docker-compose.full.yml up -d --build
+```
 
 ---
 
@@ -147,6 +153,7 @@ produits insérés). Cette étape n'est à refaire que si vous repartez d'une ba
 |-------------|-----|-------------|
 | **Boutique (acheteur)** | http://localhost:4200 | Catalogue, panier, commandes, favoris |
 | **Console vendeur** | http://localhost:4201 | Produits, commandes reçues, retours |
+| **Console d'administration (AdminJS)** | http://localhost:3010/admin | Suivi technique, approbation vendeurs, logs sécurité |
 | **Lab de tests QA** | http://localhost:4202 | Banc d'essai des parcours techniques |
 | **API / passerelle** | http://localhost:3000 | Point d'entrée unique du back-end |
 | Santé globale de l'API | http://localhost:3000/health/aggregate | Doit afficher tous les services « ok » |
@@ -189,16 +196,8 @@ docker compose -f docker-compose.full.yml down
 # Tout relancer (sans reconstruire)
 docker compose -f docker-compose.full.yml up -d
 
-# (Optionnel) Lancer le back-office d'administration AdminJS sur http://localhost:3010
-docker compose -f docker-compose.full.yml --profile admin up -d admin-service
-```
-
-### Réinitialisation complète (repartir d'une base vierge)
-
-```bash
-docker compose -f docker-compose.full.yml down -v   # -v supprime aussi les volumes (bases)
-docker compose -f docker-compose.full.yml up -d --build
-docker compose -f docker-compose.full.yml --profile tools run --rm bootstrap
+# Déclencher manuellement le bootstrap (si nécessaire)
+docker compose -f docker-compose.full.yml run --rm bootstrap
 ```
 
 ---
@@ -229,6 +228,9 @@ cd users && git checkout eddy && cd .. && cd vendors && git checkout brad && cd 
 cd Amaz_back
 cp .env.example .env
 docker compose -f docker-compose.full.yml up -d --build
-docker compose -f docker-compose.full.yml --profile tools run --rm bootstrap
-# -> http://localhost:4200 (boutique), :4201 (vendeur), :3000/health/aggregate (API)
+# Le bootstrap s'exécute automatiquement en arrière-plan !
+# Accès direct :
+#   -> http://localhost:4200 (Boutique)
+#   -> http://localhost:3010/admin (Console AdminJS)
+#   -> http://localhost:3000/health/aggregate (API)
 ```
