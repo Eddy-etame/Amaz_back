@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Database bootstrap: run all MySQL migrations in order, then seed.
  * Prerequisite: MySQL and Mongo running (e.g. docker compose up -d).
  *
@@ -47,7 +47,7 @@ function createPool(overrides = {}) {
 }
 
 async function ensureAmazDatabase() {
-  const superUser = process.env.MYSQL_SUPERUSER || process.env.MYSQL_USER || 'root';
+  const superUser = process.env.MYSQL_SUPERUSER || 'root';
   const db = (process.env.MYSQL_DATABASE || process.env.MYSQL_DB || process.env.MYSQL_DATABASE || process.env.MYSQL_DB || 'amaz_db')
     .replace(/[^a-zA-Z0-9_]/g, '') || 'amaz_db';
   const amazUser = (process.env.MYSQL_USER || process.env.MYSQL_USER || 'amaz').replace(/[^a-zA-Z0-9_]/g, '') || 'amaz';
@@ -85,10 +85,13 @@ async function ensureAmazDatabase() {
       'SELECT 1 FROM mysql.user WHERE user = ?',
       [amazUser]
     );
+    const safePass = (amazPass || 'amaz').replace(/'/g, "''");
     if (userRows.length === 0) {
-      const safePass = (amazPass || 'amaz').replace(/'/g, "''");
-      await pool.query(`CREATE USER IF NOT EXISTS '${amazUser}'@'%' IDENTIFIED BY '${safePass}'`);
-      console.log(`  Created user ${amazUser}`);
+      await pool.query(`CREATE USER IF NOT EXISTS '${amazUser}'@'%' IDENTIFIED WITH mysql_native_password BY '${safePass}'`);
+      console.log(`  Created user ${amazUser} with mysql_native_password`);
+    } else {
+      await pool.query(`ALTER USER '${amazUser}'@'%' IDENTIFIED WITH mysql_native_password BY '${safePass}'`);
+      console.log(`  Ensured user ${amazUser} uses mysql_native_password`);
     }
 
     const [dbRows] = await pool.query(
@@ -129,7 +132,30 @@ async function runMigrations(pool) {
       .map((stmt) => stmt.trim())
       .filter((stmt) => stmt.length > 0);
     for (const stmt of statements) {
-      await pool.query(stmt);
+      try {
+        await pool.query(stmt);
+      } catch (stmtErr) {
+        // Ignore "already exists" / duplicate errors to make migrations idempotent
+        const ignoreCodes = [
+          'ER_DUP_FIELDNAME',
+          'ER_DUP_KEYNAME',
+          'ER_MULTIPLE_PRI_KEY',
+          'ER_TABLE_EXISTS_ERROR',
+          'ER_CANT_DROP_FIELD_OR_KEY'
+        ];
+        const isIgnorable =
+          ignoreCodes.includes(stmtErr.code) ||
+          stmtErr.errno === 1060 ||
+          stmtErr.errno === 1061 ||
+          stmtErr.errno === 1068 ||
+          stmtErr.errno === 1050 ||
+          stmtErr.errno === 1091;
+        if (isIgnorable) {
+          console.log(`  [Idempotent Skip] ${stmtErr.message}`);
+        } else {
+          throw stmtErr;
+        }
+      }
     }
     console.log(`  Ran ${file}`);
   }
@@ -149,7 +175,24 @@ function runScript(scriptPath, label) {
 async function main() {
   console.log('=== Amaz DB Bootstrap ===\n');
 
+  // Unconditionally ensure database/user use mysql_native_password auth plugin
+  // so older clients (like admin-service using older mysql package) can authenticate.
+  console.log('Ensuring database and user authentication settings...');
+  try {
+    await ensureAmazDatabase();
+  } catch (err) {
+    console.log('  Non-critical: root user authentication setup skipped:', err.message);
+  }
+
   let pool = getMysqlPool();
+
+  try {
+    // Attempt to alter our own auth mode using the regular pool, in case superuser wasn't accessible
+    await pool.query(`ALTER USER CURRENT_USER IDENTIFIED WITH mysql_native_password BY '${process.env.MYSQL_PASSWORD || 'amaz'}'`);
+    console.log('  Successfully configured active user session to mysql_native_password');
+  } catch (selfAlterErr) {
+    console.log('  Non-critical: self-alter of auth mode skipped:', selfAlterErr.message);
+  }
 
   try {
     console.log('Running MySQL migrations...');

@@ -103,7 +103,7 @@ async function authenticate(email, password) {
 const start = async () => {
   AdminJS.registerAdapter({ Database, Resource });
 
-  const db = await new Adapter('mysql', {
+  const db = await new Adapter('mysql2', {
     // knex (client mysql) lit host/port/user/password et n'extrait PAS l'hôte du
     // connectionString -> on les passe explicitement, sinon il tente 127.0.0.1.
     host: MYSQL_HOST,
@@ -123,7 +123,17 @@ const start = async () => {
 
   const admin = new AdminJS({
     rootPath: '/admin',
-    resources: [...sqlResources, ...mongoResources]
+    resources: [...sqlResources, ...mongoResources],
+    locale: {
+      translations: {
+        properties: {
+          created_at: 'Created At',
+          updated_at: 'Updated At',
+          email_verified: 'Email Verified',
+          sms_verified: 'SMS Verified'
+        }
+      }
+    }
   });
 
   if (process.env.NODE_ENV === 'development') {

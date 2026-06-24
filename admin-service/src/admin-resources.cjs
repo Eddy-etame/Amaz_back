@@ -72,6 +72,21 @@ const hiddenHashProps = {
   refresh_token_hash: { isVisible: { list: false, show: false, filter: false, edit: false } }
 };
 
+/** Reusable before-hook to generate string IDs on creation */
+function generateIdHook(prefix) {
+  return async (request) => {
+    if (request.method === 'post') {
+      if (!request.payload.id) {
+        request.payload = {
+          ...request.payload,
+          id: randomId(prefix)
+        };
+      }
+    }
+    return request;
+  };
+}
+
 function buildSqlResources(db, env) {
   return [
     {
@@ -79,7 +94,19 @@ function buildSqlResources(db, env) {
       options: {
         navigation: { name: 'Users & Vendors' },
         properties: {
-          email: { isTitle: true }
+          email: { isTitle: true },
+          role: {
+            availableValues: [
+              { value: 'user', label: 'User' },
+              { value: 'vendor', label: 'Vendor' },
+              { value: 'admin', label: 'Admin' }
+            ]
+          }
+        },
+        actions: {
+          new: {
+            before: [generateIdHook('usr')]
+          }
         }
       }
     },
@@ -97,16 +124,32 @@ function buildSqlResources(db, env) {
             ]
           }
         },
-        actions: vendorRecordActions(env)
+        actions: {
+          ...vendorRecordActions(env)
+        }
       }
     },
     {
       resource: db.table('orders'),
-      options: { navigation: { name: 'Orders' } }
+      options: {
+        navigation: { name: 'Orders' },
+        actions: {
+          new: {
+            before: [generateIdHook('ord')]
+          }
+        }
+      }
     },
     {
       resource: db.table('order_items'),
-      options: { navigation: { name: 'Orders' } }
+      options: {
+        navigation: { name: 'Orders' },
+        actions: {
+          new: {
+            before: [generateIdHook('ori')]
+          }
+        }
+      }
     },
     {
       resource: db.table('sessions'),
