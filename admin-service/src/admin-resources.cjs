@@ -1,5 +1,6 @@
 'use strict';
 
+const { ValidationError } = require('adminjs');
 const { internalFetch } = require('../../shared/utils/internal-http.js');
 const { randomId } = require('../../shared/utils/ids.js');
 
@@ -87,6 +88,30 @@ function generateIdHook(prefix) {
   };
 }
 
+/** Hook to validate that email is unique and throw a clean validation error */
+function validateEmailUniqueHook() {
+  return async (request, context) => {
+    if (request.method === 'post') {
+      const email = request.payload.email;
+      if (email) {
+        const knex = context.resource.knex;
+        const existing = await knex('users')
+          .where('email', email)
+          .first();
+        const currentId = request.params.recordId || request.payload.id;
+        if (existing && existing.id !== currentId) {
+          throw new ValidationError({
+            email: {
+              message: 'This email address is already in use.'
+            }
+          });
+        }
+      }
+    }
+    return request;
+  };
+}
+
 function buildSqlResources(db, env) {
   return [
     {
@@ -105,7 +130,10 @@ function buildSqlResources(db, env) {
         },
         actions: {
           new: {
-            before: [generateIdHook('usr')]
+            before: [generateIdHook('usr'), validateEmailUniqueHook()]
+          },
+          edit: {
+            before: [validateEmailUniqueHook()]
           }
         }
       }
